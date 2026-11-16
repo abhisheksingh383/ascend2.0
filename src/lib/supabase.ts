@@ -3,14 +3,18 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+function envFlag(value: unknown) {
+  return value === true || value === "true" || value === "1";
+}
+
 export const supabase =
   supabaseUrl && supabaseAnonKey
     ? createClient(supabaseUrl, supabaseAnonKey)
     : null;
 
 export const authProviders = {
-  google: Boolean(import.meta.env.VITE_SUPABASE_GOOGLE_ENABLED),
-  github: Boolean(import.meta.env.VITE_SUPABASE_GITHUB_ENABLED),
+  google: envFlag(import.meta.env.VITE_SUPABASE_GOOGLE_ENABLED),
+  github: envFlag(import.meta.env.VITE_SUPABASE_GITHUB_ENABLED),
 };
 
 export async function signInWithOAuth(provider: "google" | "github") {

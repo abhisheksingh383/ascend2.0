@@ -7,3 +7,10 @@
 5. Deploy the Edge Functions in `functions/` and set their secrets with `supabase secrets set`.
 
 All browser-side data access is protected by RLS. AI, Calendar, GitHub, reminders, and Stripe secrets belong in Edge Functions, never in `VITE_` variables.
+
+For OAuth, enable Google and GitHub under Supabase Authentication > Providers, then add
+`https://ascend20.vercel.app/` to Authentication > URL Configuration > Redirect URLs.
+Set these Vercel Production environment variables before deploying:
+`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_SUPABASE_GOOGLE_ENABLED=true`,
+and `VITE_SUPABASE_GITHUB_ENABLED=true`. The provider client IDs and secrets are
+configured in Supabase, not in the Vercel frontend environment.
