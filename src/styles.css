@@ -41,3 +41,7 @@
 .focus-session{display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:10px 0;margin:10px 0;color:var(--muted);font-size:10px}.focus-session svg{color:#7060e5}.focus-session span{flex:1}.focus-session .secondary-button{padding:7px 9px;font-size:10px}
 [data-theme="dark"] .coin-earn-panel,[data-theme="system"] .coin-earn-panel{background:#3a3324;border-color:#665329;color:#f5d992}
 [data-theme="dark"] .workspace-menu,[data-theme="system"] .workspace-menu{background:#262536}
+
+.topbar{position:relative;z-index:20}
+.profile-wrap{position:relative;z-index:30}
+.profile-menu{right:0;top:calc(100% + 12px);z-index:40;box-shadow:0 12px 30px #27234432}
