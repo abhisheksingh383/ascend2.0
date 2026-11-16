@@ -1,0 +1,335 @@
+import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  ArrowUpRight, BarChart3, Bell, BookOpen, BrainCircuit, CalendarDays, Check,
+  ChevronDown, CircleHelp, Clock3, Code2, Flame, LayoutDashboard, LogOut,
+  Menu, MoreHorizontal, Pencil, Plus, Search, Settings, ShieldCheck, ShoppingBag, Sparkles,
+  Target, Trophy, UserRound, X,
+} from "lucide-react";
+import { authProviders, loadUserData, saveUserData, signInWithOAuth, supabase } from "./lib/supabase";
+
+type Task = { id: number; title: string; category: "Academic" | "Coding" | "Personal"; due: string; completed: boolean; priority: "High" | "Medium" | "Low" };
+type Habit = { id: number; label: string; icon: string; color: string; progress: number; target: string; completed: boolean };
+type FocusSession = { id: number; startedAt: string; endedAt: string; durationMinutes: number };
+type ActivityDate = string;
+type User = { name: string; email: string; avatar: string };
+type View = "Overview" | "Planner" | "Habits" | "Academics" | "Coding" | "Insights" | "Achievements" | "Marketplace" | "Settings";
+type Theme = "system" | "light" | "dark";
+
+const initialTasks: Task[] = [
+  { id: 1, title: "Complete binary trees problem set", category: "Coding", due: "Today, 11:30 AM", completed: true, priority: "High" },
+  { id: 2, title: "Review operating systems notes", category: "Academic", due: "Today, 4:00 PM", completed: false, priority: "Medium" },
+  { id: 3, title: "Build portfolio case study", category: "Coding", due: "Tomorrow", completed: false, priority: "High" },
+  { id: 4, title: "Read 20 pages of Deep Work", category: "Personal", due: "Tomorrow", completed: false, priority: "Low" },
+];
+const initialHabits: Habit[] = [
+  { id: 1, label: "Deep work", icon: "◒", color: "purple", progress: 2, target: "2h target", completed: true },
+  { id: 2, label: "DSA practice", icon: "</>", color: "blue", progress: 3, target: "5 days target", completed: false },
+  { id: 3, label: "Morning run", icon: "↗", color: "orange", progress: 4, target: "5 days target", completed: false },
+];
+const navItems: { label: View; icon: typeof LayoutDashboard }[] = [
+  { label: "Overview", icon: LayoutDashboard }, { label: "Planner", icon: CalendarDays },
+  { label: "Habits", icon: Target }, { label: "Marketplace", icon: ShoppingBag }, { label: "Academics", icon: BookOpen },
+  { label: "Coding", icon: Code2 }, { label: "Insights", icon: BarChart3 },
+];
+
+function App() {
+  const [user, setUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem("ascend-user");
+    return saved ? JSON.parse(saved) as User : null;
+  });
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [activeNav, setActiveNav] = useState<View>("Overview");
+  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [habits, setHabits] = useState<Habit[]>(initialHabits);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [mobileNav, setMobileNav] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [streakCoins, setStreakCoins] = useState(350);
+  const [streakFreezes, setStreakFreezes] = useState(1);
+  const [rewardedTaskIds, setRewardedTaskIds] = useState<number[]>([]);
+  const [rewardedHabitIds, setRewardedHabitIds] = useState<number[]>([]);
+  const [coinNotice, setCoinNotice] = useState("");
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem("ascend-theme") as Theme) || "system");
+  const [showSearch, setShowSearch] = useState(false);
+  const [showStreakInsight, setShowStreakInsight] = useState(false);
+  const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
+  const [showWorkspaceModal, setShowWorkspaceModal] = useState(false);
+  const [showCoach, setShowCoach] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState(() => localStorage.getItem("ascend-workspace") || "Personal workspace");
+  const [workspaceDraft, setWorkspaceDraft] = useState("");
+  const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
+  const [focusStartedAt, setFocusStartedAt] = useState<number | null>(null);
+  const [focusNow, setFocusNow] = useState(() => Date.now());
+  const [activityDates, setActivityDates] = useState<ActivityDate[]>([]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("ascend-theme", theme);
+  }, [theme]);
+  useEffect(() => {
+    const saved = localStorage.getItem("ascend-state");
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved) as { tasks?: Task[]; habits?: Habit[]; streakCoins?: number; streakFreezes?: number; rewardedTaskIds?: number[]; rewardedHabitIds?: number[]; focusSessions?: FocusSession[]; activityDates?: ActivityDate[] };
+      if (parsed.tasks) setTasks(parsed.tasks);
+      if (parsed.habits) setHabits(parsed.habits);
+      if (typeof parsed.streakCoins === "number") setStreakCoins(parsed.streakCoins);
+      if (typeof parsed.streakFreezes === "number") setStreakFreezes(parsed.streakFreezes);
+      if (parsed.rewardedTaskIds) setRewardedTaskIds(parsed.rewardedTaskIds);
+      if (parsed.rewardedHabitIds) setRewardedHabitIds(parsed.rewardedHabitIds);
+      if (parsed.focusSessions) setFocusSessions(parsed.focusSessions);
+      if (parsed.activityDates) setActivityDates(parsed.activityDates);
+    } catch { localStorage.removeItem("ascend-state"); }
+  }, []);
+  useEffect(() => {
+    localStorage.setItem("ascend-state", JSON.stringify({ tasks, habits, streakCoins, streakFreezes, rewardedTaskIds, rewardedHabitIds, focusSessions, activityDates }));
+    if (supabase && user?.email) {
+      supabase.auth.getUser().then(({ data }) => {
+        if (data.user) saveUserData(data.user.id, tasks, habits, { focusSessions, activityDates, streakCoins, streakFreezes }).catch(() => undefined);
+      });
+    }
+  }, [tasks, habits, streakCoins, streakFreezes, rewardedTaskIds, rewardedHabitIds, focusSessions, activityDates, user]);
+  useEffect(() => {
+    if (focusStartedAt === null) return;
+    const timer = window.setInterval(() => setFocusNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [focusStartedAt]);
+  useEffect(() => {
+    localStorage.setItem("ascend-workspace", workspaceName);
+  }, [workspaceName]);
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session?.user) {
+        const nextUser = { name: data.session.user.user_metadata.name ?? "Ascend member", email: data.session.user.email ?? "", avatar: initials(data.session.user.user_metadata.name ?? "AM") };
+        setUser(nextUser);
+        const saved = await loadUserData(data.session.user.id);
+        if (saved?.tasks) setTasks(saved.tasks as Task[]);
+        if (saved?.habits) setHabits(saved.habits as Habit[]);
+        if (saved?.focus_sessions) setFocusSessions(saved.focus_sessions as FocusSession[]);
+        if (saved?.activity_dates) setActivityDates(saved.activity_dates as ActivityDate[]);
+        if (typeof saved?.streak_coins === "number") setStreakCoins(saved.streak_coins);
+        if (typeof saved?.streak_freezes === "number") setStreakFreezes(saved.streak_freezes);
+      }
+    });
+  }, []);
+
+  if (!user) return <AuthScreen mode={authMode} setMode={setAuthMode} onAuth={setUser} />;
+
+  const completedTasks = tasks.filter((task) => task.completed).length;
+  const xp = 1240 + completedTasks * 20 + habits.filter((habit) => habit.completed).length * 15;
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const markActivity = () => setActivityDates((current) => current.includes(todayKey) ? current : [...current, todayKey]);
+  const streakMetrics = getStreakMetrics(activityDates);
+  const toggleTask = (id: number) => {
+    const task = tasks.find((item) => item.id === id);
+    if (!task) return;
+    const completing = !task.completed;
+    setTasks((current) => current.map((item) => item.id === id ? { ...item, completed: completing } : item));
+    if (completing) markActivity();
+    if (completing && !rewardedTaskIds.includes(id)) {
+      setRewardedTaskIds((current) => [...current, id]);
+      setStreakCoins((current) => current + 10);
+      setCoinNotice("+10 Ascend Coins earned for completing a task.");
+    }
+  };
+  const toggleHabit = (id: number) => {
+    const habit = habits.find((item) => item.id === id);
+    if (!habit) return;
+    const completing = !habit.completed;
+    setHabits((current) => current.map((item) => item.id === id ? { ...item, completed: completing, progress: completing ? Math.min(5, item.progress + 1) : Math.max(0, item.progress - 1) } : item));
+    if (completing) markActivity();
+    if (completing && !rewardedHabitIds.includes(id)) {
+      setRewardedHabitIds((current) => [...current, id]);
+      setStreakCoins((current) => current + 5);
+      setCoinNotice("+5 Ascend Coins earned for a habit check-in.");
+    }
+  };
+  const addTask = () => {
+    if (!newTaskTitle.trim()) return;
+    setTasks((current) => [...current, { id: Date.now(), title: newTaskTitle.trim(), category: "Personal", due: "Today", completed: false, priority: "Medium" }]);
+    setNewTaskTitle(""); setShowAddTask(false);
+  };
+  const logout = async () => { if (supabase) await supabase.auth.signOut(); localStorage.removeItem("ascend-user"); setUser(null); };
+  const setView = (view: View) => { setActiveNav(view); setMobileNav(false); };
+  const buyFreeze = (cost: number, quantity: number) => {
+    if (streakCoins < cost) return false;
+    setStreakCoins((current) => current - cost);
+    setStreakFreezes((current) => current + quantity);
+    return true;
+  };
+  const openWorkspaceModal = () => {
+    setWorkspaceDraft(workspaceName);
+    setShowWorkspaceMenu(false);
+    setShowWorkspaceModal(true);
+  };
+  const saveWorkspace = () => {
+    const nextName = workspaceDraft.trim();
+    if (!nextName) return;
+    setWorkspaceName(nextName);
+    setShowWorkspaceModal(false);
+  };
+  const focusElapsedMinutes = focusStartedAt === null ? 0 : (focusNow - focusStartedAt) / 60000;
+  const totalFocusMinutes = focusSessions.reduce((total, session) => total + session.durationMinutes, 0) + focusElapsedMinutes;
+  const toggleFocus = () => {
+    if (focusStartedAt !== null) {
+      const durationMinutes = Math.max(0, (Date.now() - focusStartedAt) / 60000);
+      if (durationMinutes >= 0.1) {
+        setFocusSessions((current) => [...current, { id: Date.now(), startedAt: new Date(focusStartedAt).toISOString(), endedAt: new Date().toISOString(), durationMinutes }]);
+      }
+      setFocusStartedAt(null);
+      setFocusNow(Date.now());
+      return;
+    }
+    setFocusStartedAt(Date.now());
+    setFocusNow(Date.now());
+  };
+  const dateLabel = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(new Date());
+
+  return <div className="app-shell">
+    <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
+      <div className="brand"><AscendMark /><span>Ascend</span><button className="mobile-close" onClick={() => setMobileNav(false)} aria-label="Close navigation"><X size={20} /></button></div>
+      <div className="workspace-switcher-wrap"><button className="workspace-switcher" onClick={() => setShowWorkspaceMenu((open) => !open)} aria-expanded={showWorkspaceMenu}><div className="avatar avatar-small">{user.avatar}</div><div><strong>{workspaceName}</strong><span>{supabase ? "Cloud sync enabled" : "Personal plan"}</span></div><ChevronDown size={16} /></button>{showWorkspaceMenu && <div className="workspace-menu"><strong>Your workspaces</strong><button className="workspace-option active" onClick={() => setShowWorkspaceMenu(false)}><div className="workspace-option-icon">A</div><span>{workspaceName}<small>Current workspace</small></span><Check size={15} /></button><button className="workspace-menu-action" onClick={openWorkspaceModal}><Plus size={15} /> Create workspace</button><button className="workspace-menu-action" onClick={() => { setShowWorkspaceMenu(false); setView("Settings"); }}><Settings size={15} /> Workspace settings</button></div>}</div>
+      <nav className="main-nav"><p className="nav-label">Workspace</p>{navItems.map(({ label, icon: Icon }) => <button key={label} className={`nav-item ${activeNav === label ? "active" : ""}`} onClick={() => setView(label)}><Icon size={18} /><span>{label}</span>{label === "Overview" && <span className="nav-dot" />}</button>)}<p className="nav-label nav-label-spaced">Manage</p><button className={`nav-item ${activeNav === "Achievements" ? "active" : ""}`} onClick={() => setView("Achievements")}><Trophy size={18} /><span>Achievements</span></button><button className={`nav-item ${activeNav === "Settings" ? "active" : ""}`} onClick={() => setView("Settings")}><Settings size={18} /><span>Settings</span></button></nav>
+      <div className="sidebar-bottom"><div className="upgrade-card"><div className="upgrade-icon"><Sparkles size={16} /></div><strong>Unlock your potential</strong><p>Get smarter insights and unlimited goals.</p><button onClick={() => setView("Settings")}>Explore Ascend Pro <ArrowUpRight size={14} /></button></div><div className="help-row"><CircleHelp size={17} /> Help center <span>⌘ /</span></div></div>
+    </aside>
+    <main className="main-content">
+      <header className="topbar"><button className="mobile-menu" onClick={() => setMobileNav(true)} aria-label="Open navigation"><Menu size={21} /></button><div className="breadcrumb"><span>Workspace</span><span className="crumb-slash">/</span><strong>{activeNav}</strong></div><div className="top-actions"><button className="icon-btn search-btn" onClick={() => setShowSearch(true)} aria-label="Search"><Search size={18} /><span>Search</span><kbd>⌘ K</kbd></button><button className="icon-btn" onClick={() => setShowNotifications((open) => !open)} aria-label="Notifications" aria-expanded={showNotifications}><Bell size={18} /><i className="notification-dot" /></button><ProfileMenu user={user} onLogout={logout} onSettings={() => setView("Settings")} /></div>{showNotifications && <NotificationPanel onClose={() => setShowNotifications(false)} />}</header>
+      {coinNotice && <button className="coin-notice" onClick={() => setCoinNotice("")}>{coinNotice} <X size={13} /></button>}
+      {activeNav === "Overview" ? <Overview user={user} dateLabel={dateLabel} tasks={tasks} habits={habits} xp={xp} totalFocusMinutes={totalFocusMinutes} focusRunning={focusStartedAt !== null} streak={streakMetrics.current} onToggleFocus={toggleFocus} onTask={toggleTask} onHabit={toggleHabit} onAdd={() => setShowAddTask(true)} onView={setView} onStreak={() => setShowStreakInsight(true)} onCoach={() => setShowCoach(true)} /> : <WorkspaceView view={activeNav} tasks={tasks} habits={habits} xp={xp} streakCoins={streakCoins} streakFreezes={streakFreezes} theme={theme} onTheme={setTheme} onTask={toggleTask} onHabit={toggleHabit} onAdd={() => setShowAddTask(true)} onView={setView} onBuyFreeze={buyFreeze} />}
+      <footer className="page-footer"><span>Ascend is your space to make progress visible.</span><span>{supabase ? "Cloud sync ready" : "Guest mode · Your data is saved locally"}</span></footer>
+    </main>
+    {showAddTask && <div className="modal-backdrop" onClick={() => setShowAddTask(false)}><div className="modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">NEW TASK</p><h2>What will you accomplish?</h2></div><button className="icon-btn" onClick={() => setShowAddTask(false)}><X size={18} /></button></div><input autoFocus value={newTaskTitle} onChange={(event) => setNewTaskTitle(event.target.value)} onKeyDown={(event) => event.key === "Enter" && addTask()} placeholder="e.g. Finish chapter 3 notes" /><div className="modal-actions"><button className="secondary-button" onClick={() => setShowAddTask(false)}>Cancel</button><button className="primary-button" onClick={addTask}>Create task <Plus size={16} /></button></div></div></div>}
+    {showSearch && <SearchOverlay tasks={tasks} onView={(view) => { setView(view); setShowSearch(false); }} onClose={() => setShowSearch(false)} />}
+    {showStreakInsight && <StreakInsight metrics={streakMetrics} activityDates={activityDates} onClose={() => setShowStreakInsight(false)} />}
+    {showCoach && <CoachPanel tasks={tasks} habits={habits} onClose={() => setShowCoach(false)} onAddTask={(title) => { setTasks((current) => [...current, { id: Date.now(), title, category: "Personal", due: "Today", completed: false, priority: "Medium" }]); setShowCoach(false); }} />}
+    {showWorkspaceModal && <div className="modal-backdrop" onClick={() => setShowWorkspaceModal(false)}><div className="modal workspace-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">WORKSPACE</p><h2>Create your focus space</h2><p className="modal-subtitle">Give this workspace a name that keeps your next step clear.</p></div><button className="icon-btn" onClick={() => setShowWorkspaceModal(false)} aria-label="Close workspace dialog"><X size={18} /></button></div><label className="workspace-name-field">Workspace name<input autoFocus value={workspaceDraft} onChange={(event) => setWorkspaceDraft(event.target.value)} onKeyDown={(event) => event.key === "Enter" && saveWorkspace()} placeholder="e.g. Final year focus" /></label><div className="modal-actions"><button className="secondary-button" onClick={() => setShowWorkspaceModal(false)}>Cancel</button><button className="primary-button" onClick={saveWorkspace} disabled={!workspaceDraft.trim()}>Save workspace <Check size={16} /></button></div></div></div>}
+  </div>;
+}
+
+function AscendMark() {
+  return <div className="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" role="presentation"><path className="brand-path" d="M7 23.5h5v-6h5v-5h5v-4h3" /><path className="brand-arrow" d="m19 8.5 6-0.5-.5 6" /><circle className="brand-orbit" cx="16" cy="16" r="13" /></svg></div>;
+}
+
+function AuthScreen({ mode, setMode, onAuth }: { mode: "login" | "signup"; setMode: (mode: "login" | "signup") => void; onAuth: (user: User) => void }) {
+  const [name, setName] = useState(""); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [error, setError] = useState(""); const [loading, setLoading] = useState(false); const [passwordFocused, setPasswordFocused] = useState(false);
+  const passwordChecks = { length: password.length >= 8, upper: /[A-Z]/.test(password), lower: /[a-z]/.test(password), number: /\d/.test(password), special: /[^A-Za-z0-9]/.test(password) };
+  const passwordValid = Object.values(passwordChecks).every(Boolean);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault(); setError("");
+    if (!email || !passwordValid || (mode === "signup" && !name)) { setError(mode === "signup" ? "Add your name and meet every password requirement." : "Enter your email and a valid password."); return; }
+    setLoading(true);
+    if (supabase) {
+      const result = mode === "signup" ? await supabase.auth.signUp({ email, password, options: { data: { name } } }) : await supabase.auth.signInWithPassword({ email, password });
+      if (result.error) { setError(result.error.message); setLoading(false); return; }
+      if (!result.data.session) { setError("Check your email to confirm your account, then sign in."); setLoading(false); return; }
+    }
+    const nextUser = { name: name || email.split("@")[0], email, avatar: initials(name || email) }; localStorage.setItem("ascend-user", JSON.stringify(nextUser)); onAuth(nextUser); setLoading(false);
+  };
+  const guest = () => { const nextUser = { name: "Alex Kim", email: "guest@ascend.local", avatar: "AK" }; localStorage.setItem("ascend-user", JSON.stringify(nextUser)); onAuth(nextUser); };
+  const oauth = async (provider: "google" | "github") => { try { await signInWithOAuth(provider); } catch (oauthError) { setError(oauthError instanceof Error ? oauthError.message : "OAuth sign-in failed."); } };
+  return <div className="auth-shell"><div className="auth-showcase"><div className="auth-brand"><AscendMark /><span>Ascend</span></div><div className="auth-pitch"><p className="eyebrow">YOUR PROGRESS, VISIBLE</p><h1>Small steps.<br /><em>Remarkable</em> momentum.</h1><p>One calm workspace to plan your goals, build better habits, and make progress you can actually see.</p><div className="auth-proof"><div className="proof-avatars"><span>AK</span><span>RM</span><span>JS</span><b>+2k</b></div><span>students building their rhythm</span></div></div><div className="auth-quote"><Sparkles size={15} /><span>&quot;Consistency is a superpower.&quot;</span></div></div><div className="auth-panel"><div className="auth-panel-inner">  <div className="auth-mobile-brand"><AscendMark /><span>Ascend</span></div><div className="auth-heading"><p className="eyebrow">{mode === "login" ? "WELCOME BACK" : "START YOUR JOURNEY"}</p><h2>{mode === "login" ? "Sign in to Ascend" : "Create your account"}</h2><p>{mode === "login" ? "Pick up right where you left off." : "Your most consistent chapter starts here."}</p></div><form onSubmit={submit}>{mode === "signup" && <label>Full name<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Alex Kim" autoComplete="name" /></label>}<label>Email address<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="you@example.com" autoComplete="email" /></label><label>Password <span className="label-hint">{mode === "login" ? "Forgot password?" : "Strong password required"}</span><input value={password} onChange={(event) => setPassword(event.target.value)} onFocus={() => setPasswordFocused(true)} type="password" placeholder="••••••••" autoComplete={mode === "login" ? "current-password" : "new-password"} /></label>{(mode === "signup" || passwordFocused) && <PasswordChecklist checks={passwordChecks} />}{error && <div className="form-error">{error}</div>}<button className="primary-button auth-submit" disabled={loading || !passwordValid}>{loading ? "Working..." : mode === "login" ? "Sign in" : "Create account"} <ArrowUpRight size={16} /></button></form><div className="auth-divider"><span>or continue with</span></div><div className="oauth-row"><button className="social-button" onClick={() => oauth("google")} disabled={!authProviders.google}>Google</button><button className="social-button" onClick={() => oauth("github")} disabled={!authProviders.github}>GitHub</button></div><button className="social-button guest-button" onClick={guest}><UserRound size={16} /> Continue as guest</button><p className="auth-switch">{mode === "login" ? "New to Ascend?" : "Already have an account?"} <button onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); }}>{mode === "login" ? "Create an account" : "Sign in"}</button></p><p className="auth-privacy"><ShieldCheck size={13} /> Your data stays private and secure.</p></div></div></div>;
+}
+
+function PasswordChecklist({ checks }: { checks: { length: boolean; upper: boolean; lower: boolean; number: boolean; special: boolean } }) {
+  const items = [["length", "8+ characters"], ["upper", "One uppercase letter"], ["lower", "One lowercase letter"], ["number", "One number"], ["special", "One special character"]];
+  return <div className="password-checklist" aria-live="polite">{items.map(([key, label]) => <span className={checks[key as keyof typeof checks] ? "valid" : ""} key={key}>{checks[key as keyof typeof checks] ? <Check size={12} /> : <span className="requirement-dot" />}{label}</span>)}</div>;
+}
+
+function Overview({ user, dateLabel, tasks, habits, xp, streak, totalFocusMinutes, focusRunning, onToggleFocus, onTask, onHabit, onAdd, onView, onStreak, onCoach }: { user: User; dateLabel: string; tasks: Task[]; habits: Habit[]; xp: number; streak: number; totalFocusMinutes: number; focusRunning: boolean; onToggleFocus: () => void; onTask: (id: number) => void; onHabit: (id: number) => void; onAdd: () => void; onView: (view: View) => void; onStreak: () => void; onCoach: () => void }) {
+  const completed = tasks.filter((task) => task.completed).length; const rate = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
+  const focusLabel = totalFocusMinutes > 0 ? `${Math.floor(totalFocusMinutes / 60)}h ${Math.round(totalFocusMinutes % 60)}m` : "No sessions logged";
+  return <div className="page-wrap"><section className="welcome-row"><div><p className="eyebrow">{dateLabel}</p><h1>Good morning, {user.name.split(" ")[0]} <span>✦</span></h1><p className="subheading">A little progress every day adds up to remarkable results.</p></div><div className="header-buttons"><button className="secondary-button" onClick={() => onView("Planner")}><CalendarDays size={16} /> Plan your day</button><button className="primary-button" onClick={onAdd}><Plus size={17} /> Add task</button></div></section><section className="stats-grid"><StatCard icon={<Flame size={18} />} label="Current streak" value={`${streak} ${streak === 1 ? "day" : "days"}`} trend={streak ? "Based on completed activity" : "Complete a task or habit today"} tone="orange" onClick={() => onView("Insights")} /><StatCard icon={<Sparkles size={18} />} label="Total XP" value={xp.toLocaleString()} trend="+180 this week" tone="purple" onClick={() => onView("Insights")} /><StatCard icon={<Clock3 size={18} />} label="Focus time" value={focusLabel} trend={focusRunning ? "Session in progress" : "Start a focus session"} tone="blue" onClick={() => onView("Insights")} /><StatCard icon={<Target size={18} />} label="Weekly score" value="84%" trend="+6% vs last week" tone="green" onClick={() => onView("Insights")} /></section><section className="content-grid"><div className="left-column"><SectionHeading title="Today's focus" subtitle={`${completed} of ${tasks.length} tasks complete`} action="View planner" onClick={() => onView("Planner")} /><div className="focus-card"><div className="progress-line"><span style={{ width: `${rate}%` }} /></div><div className="focus-summary"><strong>{rate}% complete</strong><span>{tasks.length - completed} tasks remaining</span></div><div className="focus-session"><Clock3 size={15} /><span>{focusRunning ? "Focus session running" : "Log real focus time"}</span><button className="secondary-button" onClick={onToggleFocus}>{focusRunning ? "Stop session" : "Start session"}</button></div><div className="task-list">{tasks.slice(0, 5).map((task) => <TaskRow key={task.id} task={task} onToggle={onTask} />)}</div><button className="add-task-link" onClick={onAdd}><Plus size={16} /> Add another task</button></div><SectionHeading title="Daily habits" subtitle="Small actions, compounded daily." action="Manage habits" onClick={() => onView("Habits")} /><div className="habits-grid">{habits.map((habit) => <HabitCard key={habit.id} habit={habit} onToggle={onHabit} />)}</div></div><RightRail xp={xp} onView={onView} onCoach={onCoach} totalFocusMinutes={totalFocusMinutes} /></section></div>;
+}
+
+function WorkspaceView({ view, tasks, habits, xp, streakCoins, streakFreezes, theme, onTheme, onTask, onHabit, onAdd, onView, onBuyFreeze }: { view: Exclude<View, "Overview">; tasks: Task[]; habits: Habit[]; xp: number; streakCoins: number; streakFreezes: number; theme: Theme; onTheme: (theme: Theme) => void; onTask: (id: number) => void; onHabit: (id: number) => void; onAdd: () => void; onView: (view: View) => void; onBuyFreeze: (cost: number, quantity: number) => boolean }) {
+  const [taskFilter, setTaskFilter] = useState<"Today" | "Upcoming" | "Completed">("Today");
+  const configs: Record<Exclude<View, "Overview">, { title: string; subtitle: string }> = { Planner: { title: "Plan your progress", subtitle: "Turn intention into a focused, achievable day." }, Habits: { title: "Build your rhythm", subtitle: "Small actions, repeated consistently, compound into change." }, Marketplace: { title: "Streak freeze marketplace", subtitle: "Protect your consistency when life gets busy." }, Academics: { title: "Academic command center", subtitle: "Keep subjects, deadlines, and study sessions in one place." }, Coding: { title: "Level up your craft", subtitle: "Practice deliberately and turn your coding goals into momentum." }, Insights: { title: "Your progress, decoded", subtitle: "Patterns and signals to help you work with more intention." }, Achievements: { title: "Your achievements", subtitle: "Every milestone is proof that your consistency is working." }, Settings: { title: "Workspace settings", subtitle: "Make Ascend work better for you." } };
+  const config = configs[view];
+  const visibleTasks = taskFilter === "Completed" ? tasks.filter((task) => task.completed) : taskFilter === "Upcoming" ? tasks.filter((task) => !task.completed && task.due !== "Today") : tasks.filter((task) => task.due.startsWith("Today") && !task.completed);
+  return <div className="page-wrap"><section className="workspace-heading"><div><p className="eyebrow">ASCEND WORKSPACE</p><h1>{config.title}</h1><p className="subheading">{config.subtitle}</p></div><div className="header-buttons">{view === "Planner" && <button className="primary-button" onClick={onAdd}><Plus size={17} /> Add task</button>}</div></section>{view === "Planner" && <div className="workspace-panel"><SectionHeading title="All tasks" subtitle={`${tasks.filter((task) => !task.completed).length} still in motion`} /><div className="planner-toolbar">{(["Today", "Upcoming", "Completed"] as const).map((filter) => <button key={filter} className={`filter-chip ${taskFilter === filter ? "active" : ""}`} onClick={() => setTaskFilter(filter)}>{filter}</button>)}</div>{visibleTasks.length > 0 ? visibleTasks.map((task) => <TaskRow key={task.id} task={task} onToggle={onTask} />) : <div className="empty-state">No {taskFilter.toLowerCase()} tasks yet.</div>}</div>}{view === "Habits" && <div className="detail-grid">{habits.map((habit) => <HabitCard key={habit.id} habit={habit} onToggle={onHabit} />)}<div className="add-placeholder" onClick={() => onView("Settings")}><Plus size={20} /><strong>Create a new habit</strong><span>Open settings to configure your routine.</span></div></div>}{view === "Marketplace" && <MarketplaceView coins={streakCoins} freezes={streakFreezes} onBuy={onBuyFreeze} />}{view === "Academics" && <AcademicView />}{view === "Coding" && <CodingView />}{view === "Insights" && <InsightsView tasks={tasks} xp={xp} />}{view === "Achievements" && <AchievementsView xp={xp} onView={onView} />}{view === "Settings" && <SettingsView theme={theme} onTheme={onTheme} />}</div>;
+}
+
+function RightRail({ xp, onView, onCoach, totalFocusMinutes }: { xp: number; onView: (view: View) => void; onCoach: () => void; totalFocusMinutes: number }) { const [showCoachMenu, setShowCoachMenu] = useState(false); return <div className="right-column"><section className="level-card"><div className="level-top"><div><p className="card-overline">YOUR PROGRESS</p><h2>Level 08 <span>✦</span></h2></div><div className="level-badge">08</div></div><div className="level-progress"><div className="level-progress-label"><span><strong>{xp.toLocaleString()} XP</strong> <em>/ 1,500 XP</em></span><strong>Explorer</strong></div><div className="progress-line light"><span style={{ width: `${Math.min(100, (xp % 500) / 5)}%` }} /></div></div><div className="level-footer"><span><Trophy size={14} /> 260 XP to next level</span><button onClick={() => onView("Achievements")}>View rewards <ArrowUpRight size={14} /></button></div></section><section className="ai-card"><div className="ai-card-top"><button className="ai-spark" onClick={onCoach} aria-label="Open AI Coach"><BrainCircuit size={19} /></button><span className="live-pill">AI COACH <i /></span><div className="ai-menu-wrap"><button className="ai-more" onClick={() => setShowCoachMenu((open) => !open)} aria-label="AI Coach options"><MoreHorizontal size={18} /></button>{showCoachMenu && <div className="ai-menu"><button onClick={() => { setShowCoachMenu(false); onCoach(); }}>Review my rhythm</button><button onClick={() => setShowCoachMenu(false)}>Dismiss suggestion</button></div>}</div></div><h2>You&apos;re building a<br /><em>strong rhythm.</em></h2><p>AI Coach spots patterns in your tasks and habits, then suggests one practical next step.</p><button className="ai-action" onClick={onCoach}>Open AI Coach <ArrowUpRight size={14} /></button></section><ActivityCard onView={onView} totalFocusMinutes={totalFocusMinutes} /><section className="quote-card"><span className="quote-mark">“</span><p>Success is the sum of small efforts, repeated day in and day out.</p><small>— Robert Collier</small></section></div>; }
+
+function ActivityCard({ onView, totalFocusMinutes }: { onView: (view: View) => void; totalFocusMinutes: number }) {
+  const [range, setRange] = useState<"This week" | "Last week" | "This month">("This week");
+  const [selectedDay, setSelectedDay] = useState(3);
+  const isMonthly = range === "This month";
+  const loggedMinutes = totalFocusMinutes;
+  const monthWeekCount = Math.ceil((new Date(new Date().getFullYear(), new Date().getMonth(), 1).getDay() + new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()) / 7);
+  const labels = isMonthly ? Array.from({ length: monthWeekCount }, (_, index) => `Week ${index + 1}`) : ["M", "T", "W", "T", "F", "S", "S"];
+  const hours = labels.map((_, index) => index === labels.length - 1 ? loggedMinutes / 60 : 0);
+  const values = hours.map((value) => value > 0 ? Math.min(100, (value / 7) * 100) : 0);
+  const ariaLabels = isMonthly ? labels : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  const formatHours = (value: number) => `${Math.floor(value)}h ${Math.round((value % 1) * 60)}m`;
+  return <section className="week-card activity-card" role="button" tabIndex={0} onClick={() => onView("Insights")} onKeyDown={(event) => event.key === "Enter" && onView("Insights")}><div className="week-heading"><div><p className="card-overline">{range.toUpperCase()}</p><h2>Activity overview</h2></div><select className="small-select" value={range} onChange={(event) => { event.stopPropagation(); setRange(event.target.value as typeof range); setSelectedDay(0); }} onClick={(event) => event.stopPropagation()} aria-label="Activity range"><option>This week</option><option>Last week</option><option>This month</option></select></div><div className="chart"><div className="chart-y"><span>7h</span><span>4h</span><span>0h</span></div><div className="chart-area"><div className="chart-grid"><i /><i /><i /></div><div key={range} className={`bars ${isMonthly ? "monthly-bars" : ""}`}>{values.map((height, index) => <button className={`bar-group ${index === selectedDay ? "today" : ""}`} key={`${range}-${index}`} onClick={(event) => { event.stopPropagation(); setSelectedDay(index); }} title={`${ariaLabels[index]}: ${loggedMinutes && hours[index] ? formatHours(hours[index]) + " focused" : "No focus time logged"}`} aria-label={`${ariaLabels[index]}: ${loggedMinutes && hours[index] ? formatHours(hours[index]) + " focused" : "No focus time logged"}`}><span className="bar" style={{ height: `${height}%` }} /><span>{labels[index]}</span></button>)}</div></div></div><div className="chart-legend"><span><i className="legend-dot purple-dot" /> Focus time</span><button onClick={(event) => { event.stopPropagation(); onView("Insights"); }}>{loggedMinutes ? `${formatHours(loggedMinutes / labels.length)} avg / period` : "No focus time logged"}</button></div></section>;
+}
+function AcademicView() { return <div className="academic-grid"><div className="workspace-panel"><SectionHeading title="Current subjects" subtitle="Spring semester · 4 active subjects" /><div className="subject-row"><span className="subject-icon purple">OS</span><div><strong>Operating Systems</strong><small>3 assignments · 72% average</small></div><b>72%</b></div><div className="subject-row"><span className="subject-icon blue">DB</span><div><strong>Database Systems</strong><small>2 assignments · 86% average</small></div><b>86%</b></div><div className="subject-row"><span className="subject-icon orange">AI</span><div><strong>Artificial Intelligence</strong><small>1 assignment · 91% average</small></div><b>91%</b></div></div><div className="workspace-panel deadline-panel"><p className="card-overline">UP NEXT</p><h2>Assignment deadlines</h2><div className="deadline"><CalendarDays size={17} /><div><strong>OS scheduling report</strong><span>Due in 2 days</span></div><b>High</b></div><div className="deadline"><CalendarDays size={17} /><div><strong>SQL optimization lab</strong><span>Due in 6 days</span></div><b>Medium</b></div></div></div>; }
+function CodingView() { const [done, setDone] = useState(false); return <div className="coding-grid"><div className="challenge-card"><div className="challenge-kicker"><span className="ai-spark"><Code2 size={17} /></span><span>DAILY CHALLENGE</span><b>+40 XP</b></div><h2>Longest consecutive sequence</h2><p>Given an unsorted array of integers, find the length of the longest consecutive elements sequence.</p><div className="challenge-tags"><span>Medium</span><span>Arrays</span><span>15 min</span></div><button className={`primary-button ${done ? "done-button" : ""}`} onClick={() => setDone(true)}>{done ? <><Check size={16} /> Challenge completed</> : <>Start challenge <ArrowUpRight size={15} /></>}</button></div><div className="workspace-panel skill-panel"><SectionHeading title="Skill map" subtitle="Your current coding focus" /><div className="skill"><span>Data structures</span><div><i style={{ width: "78%" }} /></div><b>78%</b></div><div className="skill"><span>Algorithms</span><div><i style={{ width: "64%" }} /></div><b>64%</b></div><div className="skill"><span>System design</span><div><i style={{ width: "36%" }} /></div><b>36%</b></div></div></div>; }
+function InsightsView({ tasks, xp }: { tasks: Task[]; xp: number }) { const completion = Math.round(tasks.filter((task) => task.completed).length / Math.max(1, tasks.length) * 100); return <div className="insight-grid"><div className="insight-hero"><div><p className="card-overline">WEEKLY PRODUCTIVITY SCORE</p><strong>84<span>/100</span></strong><p>Up 6% from last week. You&apos;re finding your rhythm.</p></div><div className="score-ring"><span>84%</span></div></div><div className="workspace-panel metric-panel"><SectionHeading title="Signals this week" subtitle="Based on your activity" /><div className="metric-row"><span>Task completion</span><b>{completion}%</b><i className="positive">+12%</i></div><div className="metric-row"><span>XP earned</span><b>{xp - 1240} XP</b><i className="positive">+18%</i></div><div className="metric-row"><span>Best focus window</span><b>9—11 AM</b><i>Consistent</i></div></div><div className="workspace-panel insight-tip"><BrainCircuit size={20} /><div><strong>One useful adjustment</strong><p>Reserve your first two hours for deep work. Your completion rate is 28% higher before noon.</p></div></div></div>; }
+function MarketplaceView({ coins, freezes, onBuy }: { coins: number; freezes: number; onBuy: (cost: number, quantity: number) => boolean }) {
+  const [notice, setNotice] = useState("");
+  const purchase = (cost: number, quantity: number, label: string) => {
+    const success = onBuy(cost, quantity);
+    setNotice(success ? `${label} added to your inventory.` : "You need more Ascend Coins for this bundle.");
+  };
+  return <div className="marketplace"><div className="market-balance"><div><p className="card-overline">YOUR WALLET</p><h2><span className="coin-symbol">✦</span> {coins.toLocaleString()} Ascend Coins</h2><p>Earn coins by completing meaningful work and maintaining your rhythm.</p></div><div className="freeze-inventory"><Flame size={18} /><div><strong>{freezes}</strong><span>streak freezes owned</span></div></div></div><div className="coin-earn-panel"><div className="coin-earn-icon">✦</div><div><strong>How to earn Ascend Coins</strong><p>Complete each task once to earn <b>+10</b> coins, or check in a habit for <b>+5</b>. Rewards are granted once per task or habit and cannot be farmed by toggling.</p></div></div><div className="marketplace-heading"><div><h2>Streak protection</h2><p>Use a freeze when you need a day off without losing your streak.</p></div>{notice && <span className="purchase-notice"><Check size={14} /> {notice}</span>}</div><div className="market-items"><MarketItem icon="◒" title="Single freeze" description="Protect your streak for one missed day." quantity="1 freeze" cost={100} onBuy={() => purchase(100, 1, "Single freeze")} /><MarketItem icon="🔥" title="Streak shield" description="A better value for your next busy week." quantity="3 freezes" cost={250} featured onBuy={() => purchase(250, 3, "Streak shield")} /><MarketItem icon="✦" title="Legendary shield" description="Stay covered through a full week away." quantity="7 freezes" cost={500} onBuy={() => purchase(500, 7, "Legendary shield")} /></div><div className="market-rules"><ShieldCheck size={18} /><div><strong>Fair play, by design</strong><p>Freezes protect an existing streak; they do not create one. One freeze is consumed automatically when a productive day is missed.</p></div></div></div>;
+}
+function MarketItem({ icon, title, description, quantity, cost, featured, onBuy }: { icon: string; title: string; description: string; quantity: string; cost: number; featured?: boolean; onBuy: () => void }) {
+  return <div className={`market-item ${featured ? "featured" : ""}`}>{featured && <span className="best-value">BEST VALUE</span>}<div className="market-item-icon">{icon}</div><h3>{title}</h3><p>{description}</p><div className="market-item-footer"><span>{quantity}</span><button className="primary-button" onClick={onBuy}><span className="coin-symbol">✦</span>{cost}</button></div></div>;
+}
+function AchievementsView({ xp, onView }: { xp: number; onView: (view: View) => void }) { return <div className="achievement-grid"><div className="achievement-hero"><Trophy size={33} /><p className="card-overline">CURRENT LEVEL</p><h2>Explorer</h2><span>{xp.toLocaleString()} XP earned</span></div>{[["First ascent", "Complete your first task", true, "✦"], ["Seven-day rhythm", "Maintain a 7 day streak", true, "🔥"], ["Deep focus", "Log 20 hours of focus", false, "◒"], ["Habit builder", "Complete 50 habit check-ins", false, "◎"]].map(([title, desc, unlocked, icon]) => <div className={`achievement ${unlocked ? "unlocked" : ""}`} key={String(title)}><div className="achievement-icon">{icon}</div><div><strong>{title}</strong><p>{desc}</p></div>{unlocked ? <Check size={17} /> : <span className="locked">Locked</span>}</div>)}<button className="secondary-button" onClick={() => onView("Overview")}>Back to overview <ArrowUpRight size={15} /></button></div>; }
+function SettingsView({ theme, onTheme }: { theme: Theme; onTheme: (theme: Theme) => void }) { return <div className="settings-grid"><div className="workspace-panel settings-card"><SectionHeading title="Profile" subtitle="How you appear in Ascend" /><div className="settings-profile"><div className="avatar avatar-large">AK</div><div><strong>Alex Kim</strong><span>alex@example.com</span></div><button className="secondary-button"><Pencil size={14} /> Edit</button></div></div><div className="workspace-panel settings-card"><SectionHeading title="Preferences" subtitle="Tune your workspace" /><div className="theme-setting"><div><strong>Theme</strong><small>System is recommended and follows your device preference.</small></div><div className="theme-options">{(["system", "light", "dark"] as Theme[]).map((option) => <button key={option} className={theme === option ? "selected" : ""} onClick={() => onTheme(option)}>{option === "system" ? "System" : option === "light" ? "Light" : "Dark"}</button>)}</div></div><label className="setting-toggle"><span><strong>Daily reminders</strong><small>Get a gentle nudge for your planned work.</small></span><input type="checkbox" defaultChecked /></label><label className="setting-toggle"><span><strong>Weekly reflection</strong><small>Receive your progress summary every Sunday.</small></span><input type="checkbox" defaultChecked /></label><label className="setting-toggle"><span><strong>AI Coach suggestions</strong><small>Use your activity to personalize recommendations.</small></span><input type="checkbox" defaultChecked /></label></div><div className="workspace-panel settings-card"><SectionHeading title="Data & privacy" subtitle="You are in control." /><div className="privacy-row"><ShieldCheck size={18} /><span>Your data is stored locally in guest mode and never shared.</span><button className="text-button">Learn more <ArrowUpRight size={13} /></button></div></div></div>; }
+
+function SearchOverlay({ tasks, onView, onClose }: { tasks: Task[]; onView: (view: View) => void; onClose: () => void }) {
+  const [query, setQuery] = useState("");
+  const normalized = query.trim().toLowerCase();
+  const matchingTasks = normalized ? tasks.filter((task) => `${task.title} ${task.category} ${task.due}`.toLowerCase().includes(normalized)) : tasks.slice(0, 3);
+  const matchingViews = navItems.filter((item) => item.label.toLowerCase().includes(normalized));
+  return <div className="search-backdrop" onClick={onClose} onKeyDown={(event) => event.key === "Escape" && onClose()}><div className="search-panel" onClick={(event) => event.stopPropagation()}><div className="search-input-wrap"><Search size={18} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === "Escape" && onClose()} placeholder="Search tasks, habits, or workspace pages..." /><kbd>ESC</kbd><button onClick={onClose} aria-label="Close search"><X size={17} /></button></div><div className="search-results">{matchingViews.length > 0 && <div className="search-group"><p>WORKSPACE</p>{matchingViews.map(({ label, icon: Icon }) => <button key={label} onClick={() => onView(label)}><Icon size={16} /><span>{label}</span><ArrowUpRight size={14} /></button>)}</div>}{matchingTasks.length > 0 && <div className="search-group"><p>TASKS</p>{matchingTasks.map((task) => <button key={task.id} onClick={() => onView("Planner")}><span className={`category-dot ${task.category.toLowerCase()}`} /><div><strong>{task.title}</strong><small>{task.category} · {task.due}</small></div><ArrowUpRight size={14} /></button>)}</div>}{matchingViews.length === 0 && matchingTasks.length === 0 && <div className="search-empty"><Search size={22} /><strong>No results found</strong><span>Try a task name, category, or page.</span></div>}</div><div className="search-footer">Search across your Ascend workspace <span>Press <kbd>ESC</kbd> to close</span></div></div></div>;
+}
+
+function getStreakMetrics(activityDates: string[]) {
+  const dates = new Set(activityDates);
+  const today = new Date();
+  let current = 0;
+  for (let offset = 0; offset < 366; offset += 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - offset);
+    if (!dates.has(date.toISOString().slice(0, 10))) break;
+    current += 1;
+  }
+  let longest = 0;
+  const sorted = [...dates].sort();
+  let run = 0;
+  sorted.forEach((date, index) => {
+    const previous = index > 0 ? new Date(`${sorted[index - 1]}T00:00:00`) : null;
+    const currentDate = new Date(`${date}T00:00:00`);
+    run = previous && (currentDate.getTime() - previous.getTime()) === 86400000 ? run + 1 : 1;
+    longest = Math.max(longest, run);
+  });
+  const monthPrefix = today.toISOString().slice(0, 7);
+  return { current, longest, activeThisMonth: [...dates].filter((date) => date.startsWith(monthPrefix)).length };
+}
+
+function StreakInsight({ metrics, activityDates, onClose }: { metrics: ReturnType<typeof getStreakMetrics>; activityDates: string[]; onClose: () => void }) {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  const monthName = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(today);
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const days = Array.from({ length: firstDay + daysInMonth }, (_, index) => index < firstDay ? null : index - firstDay + 1);
+  return <div className="modal-backdrop" onClick={onClose}><div className="streak-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">STREAK INSIGHT</p><h2>Your consistency calendar</h2><p className="modal-subtitle">You&apos;ve continued your streak for <strong>{metrics.current} consecutive days</strong>.</p></div><button className="icon-btn" onClick={onClose} aria-label="Close streak insight"><X size={18} /></button></div><div className="streak-summary"><div><Flame size={18} /><strong>{metrics.current} days</strong><span>Current streak</span></div><div><Trophy size={18} /><strong>{metrics.longest} days</strong><span>Longest streak</span></div><div><Check size={18} /><strong>{metrics.activeThisMonth} days</strong><span>Active this month</span></div></div><div className="calendar-card"><div className="calendar-heading"><h3>{monthName}</h3><span><i className="calendar-dot active" /> Active <i className="calendar-dot missed" /> No activity</span></div><div className="calendar-weekdays">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <span key={day}>{day}</span>)}</div><div className="calendar-grid">{days.map((day, index) => { const key = day ? new Date(year, month, day).toISOString().slice(0, 10) : ""; return <div key={index} className={`calendar-day ${day && activityDates.includes(key) ? "active" : ""} ${day === today.getDate() ? "today" : ""}`}>{day && <span>{day}</span>}</div>; })}</div></div><p className="streak-note"><Sparkles size={14} /> Complete a task or habit today to keep your activity streak going.</p></div></div>;
+}
+function NotificationPanel({ onClose }: { onClose: () => void }) { return <div className="notification-panel"><div className="notification-heading"><strong>Notifications</strong><button onClick={onClose} aria-label="Close notifications"><X size={15} /></button></div><div className="notification-item"><Sparkles size={15} /><span><strong>AI Coach has a suggestion</strong><small>Review your focus rhythm for today.</small></span></div><div className="notification-item"><Flame size={15} /><span><strong>Your 12-day streak is active</strong><small>Complete one task to keep it going.</small></span></div><div className="notification-item"><CalendarDays size={15} /><span><strong>OS scheduling report is due soon</strong><small>Your deadline is in 2 days.</small></span></div><button className="notification-clear" onClick={onClose}>Mark all as read</button></div>; }
+function CoachPanel({ tasks, habits, onClose, onAddTask }: { tasks: Task[]; habits: Habit[]; onClose: () => void; onAddTask: (title: string) => void }) { const openTasks = tasks.filter((task) => !task.completed).length; const activeHabits = habits.filter((habit) => habit.completed).length; const recommendation = openTasks > 2 ? "Choose one priority task and protect a 25-minute focus block for it." : activeHabits === 0 ? "Start with one small habit check-in before your first task." : "Your rhythm is steady. Add a short reflection after your next focus block."; return <div className="modal-backdrop" onClick={onClose}><div className="modal coach-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">AI COACH</p><h2>Your next best step</h2><p className="modal-subtitle">A lightweight recommendation based on this workspace&apos;s tasks and habits.</p></div><button className="icon-btn" onClick={onClose} aria-label="Close AI Coach"><X size={18} /></button></div><div className="coach-recommendation"><div className="ai-spark"><BrainCircuit size={20} /></div><div><strong>{recommendation}</strong><p>{openTasks} open tasks · {activeHabits} habits checked in</p></div></div><div className="coach-actions"><button className="secondary-button" onClick={() => onAddTask("25-minute focused work block")}><Plus size={15} /> Add focus block</button><button className="primary-button" onClick={onClose}>Got it</button></div></div></div>; }
+function ProfileMenu({ user, onLogout, onSettings }: { user: User; onLogout: () => void; onSettings: () => void }) { const [open, setOpen] = useState(false); return <div className="profile-wrap"><button className="profile-button" onClick={() => setOpen(!open)}><div className="avatar">{user.avatar}</div><ChevronDown size={14} /></button>{open && <div className="profile-menu"><strong>{user.name}</strong><span>{user.email}</span><button onClick={onSettings}><Settings size={13} /> Settings</button><button onClick={onLogout}><LogOut size={13} /> Sign out</button></div>}</div>; }
+function SectionHeading({ title, subtitle, action, onClick }: { title: string; subtitle: string; action?: string; onClick?: () => void }) { return <div className="section-heading"><div><h2>{title}</h2><p>{subtitle}</p></div>{action && <button className="text-button" onClick={onClick}>{action} <ArrowUpRight size={14} /></button>}</div>; }
+function StatCard({ icon, label, value, trend, tone, onClick }: { icon: ReactNode; label: string; value: string; trend: string; tone: string; onClick?: () => void }) { return <div className={`stat-card ${onClick ? "clickable-stat" : ""}`} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined} onClick={onClick} onKeyDown={(event) => onClick && event.key === "Enter" && onClick()}><div className={`stat-icon ${tone}`}>{icon}</div><div className="stat-copy"><p>{label}</p><strong>{value}</strong><span className={tone === "orange" ? "neutral-trend" : ""}>{trend}</span></div></div>; }
+function TaskRow({ task, onToggle }: { task: Task; onToggle: (id: number) => void }) { const [open, setOpen] = useState(false); return <div className={`task-row ${task.completed ? "task-done" : ""}`}><button className={`check-box ${task.completed ? "checked" : ""}`} onClick={() => onToggle(task.id)} aria-label={`Mark ${task.title} ${task.completed ? "incomplete" : "complete"}`}>{task.completed && <Check size={14} />}</button><div className="task-info"><strong>{task.title}</strong><span><i className={`category-dot ${task.category.toLowerCase()}`} />{task.category}<b>·</b>{task.due}</span></div><span className={`priority ${task.priority.toLowerCase()}`}>{task.priority}</span><div className="task-more-wrap"><button className="more-button" onClick={() => setOpen((value) => !value)} aria-label={`Options for ${task.title}`}><MoreHorizontal size={17} /></button>{open && <div className="task-menu"><button onClick={() => { onToggle(task.id); setOpen(false); }}>{task.completed ? "Mark incomplete" : "Mark complete"}</button><button onClick={() => setOpen(false)}>Keep in focus</button></div>}</div></div>; }
+function HabitCard({ habit, onToggle }: { habit: Habit; onToggle: (id: number) => void }) { return <div className="habit-card"><div className="habit-top"><div className={`habit-icon ${habit.color}`}>{habit.icon}</div><button className={`habit-check ${habit.completed ? "checked" : ""}`} onClick={() => onToggle(habit.id)}>{habit.completed ? <Check size={14} /> : ""}</button></div><strong>{habit.label}</strong><div className="habit-progress"><span style={{ width: `${(habit.progress / 5) * 100}%` }} /></div><div className="habit-bottom"><span>{habit.progress}/5 days</span><small>{habit.target}</small></div></div>; }
+function initials(value: string) { return value.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(); }
+export default App;

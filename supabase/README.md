@@ -1,0 +1,9 @@
+# Supabase setup
+
+1. Create a Supabase project and copy its URL and anon key into `.env`.
+2. Run `migrations/001_initial_schema.sql` in the SQL editor.
+3. Enable Email, Google, and GitHub providers in Authentication > Providers.
+4. Add the OAuth callback URL shown by Supabase to each provider.
+5. Deploy the Edge Functions in `functions/` and set their secrets with `supabase secrets set`.
+
+All browser-side data access is protected by RLS. AI, Calendar, GitHub, reminders, and Stripe secrets belong in Edge Functions, never in `VITE_` variables.
