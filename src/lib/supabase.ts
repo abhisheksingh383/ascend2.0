@@ -3,26 +3,19 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-function envFlag(value: unknown) {
-  return value === true || value === "true" || value === "1";
-}
-
 export const supabase =
   supabaseUrl && supabaseAnonKey
     ? createClient(supabaseUrl, supabaseAnonKey)
     : null;
 
 export const authProviders = {
-  google: envFlag(import.meta.env.VITE_SUPABASE_GOOGLE_ENABLED),
-  github: envFlag(import.meta.env.VITE_SUPABASE_GITHUB_ENABLED),
+  google: Boolean(supabase),
+  github: Boolean(supabase),
 };
 
 export async function signInWithOAuth(provider: "google" | "github") {
   if (!supabase) {
     throw new Error("Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
-  }
-  if (!authProviders[provider]) {
-    throw new Error(`${provider} sign-in is not enabled. Configure the provider in Supabase and set its Vite flag.`);
   }
   const { error } = await supabase.auth.signInWithOAuth({
     provider,

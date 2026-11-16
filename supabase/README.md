@@ -11,6 +11,5 @@ All browser-side data access is protected by RLS. AI, Calendar, GitHub, reminder
 For OAuth, enable Google and GitHub under Supabase Authentication > Providers, then add
 `https://ascend20.vercel.app/` to Authentication > URL Configuration > Redirect URLs.
 Set these Vercel Production environment variables before deploying:
-`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_SUPABASE_GOOGLE_ENABLED=true`,
-and `VITE_SUPABASE_GITHUB_ENABLED=true`. The provider client IDs and secrets are
-configured in Supabase, not in the Vercel frontend environment.
+`VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY`. The provider client IDs and
+secrets are configured in Supabase, not in the Vercel frontend environment.
