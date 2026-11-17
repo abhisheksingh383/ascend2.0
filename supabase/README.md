@@ -17,6 +17,15 @@ supabase functions deploy ai-coach
 
 Never paste the Gemini key into `.env` values beginning with `VITE_`, `src/`, or committed files. If a key has been shared publicly, rotate it in Google AI Studio and use the replacement as the Supabase secret.
 
+The repository includes `supabase/config.toml` with `verify_jwt = false` for `ai-coach`, because guest users can use the Coach. The function must still be deployed once to the configured project:
+
+```bash
+supabase login
+supabase link --project-ref xxawrljpcfhinudjgims
+supabase secrets set GEMINI_API_KEY=your-rotated-key GEMINI_MODEL=gemini-2.0-flash
+supabase functions deploy ai-coach --no-verify-jwt
+```
+
 The Coach is the Gemini interface in the app. It accepts free-form questions and can propose adding, completing, or deleting tasks, but every proposed change is shown for human confirmation. Profile onboarding collects name, date of birth, course, and standard/year; Academics can then ask Gemini for a tailored syllabus. Deploy the updated function after changing its code, otherwise the deployed app will continue using the old behavior.
 
 For OAuth, enable Google and GitHub under Supabase Authentication > Providers, then add

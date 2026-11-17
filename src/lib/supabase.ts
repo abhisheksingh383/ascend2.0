@@ -63,7 +63,9 @@ export async function loadUserData(userId: string) {
 export async function requestAiCoach(feature: "coach" | "challenge" | "review" | "explainer", prompt: string, context: unknown = {}) {
   if (!supabase) throw new Error("Gemini Coach requires Supabase configuration.");
   const { data, error } = await supabase.functions.invoke("ai-coach", { body: { feature, prompt, context } });
-  if (error) throw error;
+  if (error) throw new Error(error.message.includes("404") || error.message.toLowerCase().includes("not found")
+    ? "Gemini Coach is not deployed yet. Deploy the supabase/functions/ai-coach Edge Function, then try again."
+    : error.message);
   if (!data?.content) throw new Error("Gemini Coach returned an empty response.");
   return { content: data.content as string, actions: (data.actions ?? []) as AiAction[] };
 }
