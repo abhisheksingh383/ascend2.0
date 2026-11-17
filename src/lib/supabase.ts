@@ -13,6 +13,19 @@ export const authProviders = {
   github: Boolean(supabase),
 };
 
+export type AiAction = {
+  type: "add_task" | "delete_task" | "complete_task" | "create_subject";
+  taskId?: number;
+  title?: string;
+  category?: "Academic" | "Coding" | "Personal";
+  due?: string;
+  priority?: "High" | "Medium" | "Low";
+  reason?: string;
+  subjectName?: string;
+  code?: string;
+  topics?: string[];
+};
+
 export async function signInWithOAuth(provider: "google" | "github") {
   if (!supabase) {
     throw new Error("Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
@@ -52,5 +65,5 @@ export async function requestAiCoach(feature: "coach" | "challenge" | "review" |
   const { data, error } = await supabase.functions.invoke("ai-coach", { body: { feature, prompt, context } });
   if (error) throw error;
   if (!data?.content) throw new Error("Gemini Coach returned an empty response.");
-  return data.content as string;
+  return { content: data.content as string, actions: (data.actions ?? []) as AiAction[] };
 }

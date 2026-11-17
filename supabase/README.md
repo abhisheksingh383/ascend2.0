@@ -17,6 +17,8 @@ supabase functions deploy ai-coach
 
 Never paste the Gemini key into `.env` values beginning with `VITE_`, `src/`, or committed files. If a key has been shared publicly, rotate it in Google AI Studio and use the replacement as the Supabase secret.
 
+The Coach is the Gemini interface in the app. It accepts free-form questions and can propose adding, completing, or deleting tasks, but every proposed change is shown for human confirmation. Profile onboarding collects name, date of birth, course, and standard/year; Academics can then ask Gemini for a tailored syllabus. Deploy the updated function after changing its code, otherwise the deployed app will continue using the old behavior.
+
 For OAuth, enable Google and GitHub under Supabase Authentication > Providers, then add
 `https://ascend20.vercel.app/` to Authentication > URL Configuration > Redirect URLs.
 Set these Vercel Production environment variables before deploying:
