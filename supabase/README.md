@@ -6,27 +6,27 @@
 4. Add the OAuth callback URL shown by Supabase to each provider.
 5. Deploy the Edge Functions in `functions/` and set their secrets with `supabase secrets set`.
 
-All browser-side data access is protected by RLS. Gemini, Calendar, GitHub, reminders, and Stripe secrets belong in Edge Functions, never in `VITE_` variables.
+All browser-side data access is protected by RLS. Groq, Calendar, GitHub, reminders, and Stripe secrets belong in Edge Functions, never in `VITE_` variables.
 
-The AI Coach uses Gemini. Configure the key in Supabase, not in this repository:
+The AI Coach uses Groq. Configure the key in Supabase, not in this repository:
 
 ```bash
-supabase secrets set GEMINI_API_KEY=your-key GEMINI_MODEL=gemini-2.0-flash
+supabase secrets set GROQ_API_KEY=your-key
 supabase functions deploy ai-coach
 ```
 
-Never paste the Gemini key into `.env` values beginning with `VITE_`, `src/`, or committed files. If a key has been shared publicly, rotate it in Google AI Studio and use the replacement as the Supabase secret.
+Never paste the Groq key into `.env` values beginning with `VITE_`, `src/`, or committed files. If a key has been shared publicly, rotate it in Groq Console and use the replacement as the Supabase secret.
 
 The repository includes `supabase/config.toml` with `verify_jwt = false` for `ai-coach`, because guest users can use the Coach. The function must still be deployed once to the configured project:
 
 ```bash
 supabase login
 supabase link --project-ref xxawrljpcfhinudjgims
-supabase secrets set GEMINI_API_KEY=your-rotated-key GEMINI_MODEL=gemini-2.0-flash
+supabase secrets set GROQ_API_KEY=your-rotated-key
 supabase functions deploy ai-coach --no-verify-jwt
 ```
 
-The Coach is the Gemini interface in the app. It accepts free-form questions and can propose adding, completing, or deleting tasks, but every proposed change is shown for human confirmation. Profile onboarding collects name, date of birth, course, and standard/year; Academics can then ask Gemini for a tailored syllabus. Deploy the updated function after changing its code, otherwise the deployed app will continue using the old behavior.
+The Coach is the Groq interface in the app. It accepts free-form questions and can propose adding, completing, or deleting tasks, but every proposed change is shown for human confirmation. Profile onboarding collects name, date of birth, course, and standard/year; Academics can then ask Groq for a tailored syllabus. Deploy the updated function after changing its code, otherwise the deployed app will continue using the old behavior.
 
 For OAuth, enable Google and GitHub under Supabase Authentication > Providers, then add
 `https://ascend20.vercel.app/` to Authentication > URL Configuration > Redirect URLs.

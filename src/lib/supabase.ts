@@ -61,11 +61,22 @@ export async function loadUserData(userId: string) {
 }
 
 export async function requestAiCoach(feature: "coach" | "challenge" | "review" | "explainer", prompt: string, context: unknown = {}) {
-  if (!supabase) throw new Error("Gemini Coach requires Supabase configuration.");
+  if (!supabase) throw new Error("AI Coach requires Supabase configuration.");
   const { data, error } = await supabase.functions.invoke("ai-coach", { body: { feature, prompt, context } });
-  if (error) throw new Error(error.message.includes("404") || error.message.toLowerCase().includes("not found")
-    ? "Gemini Coach is not deployed yet. Deploy the supabase/functions/ai-coach Edge Function, then try again."
-    : error.message);
-  if (!data?.content) throw new Error("Gemini Coach returned an empty response.");
+  if (error) {
+    let message = error.message;
+    if (error.context instanceof Response) {
+      try {
+        const details = await error.context.clone().json() as { error?: string };
+        if (details.error) message = details.error;
+      } catch {
+        // Keep the SDK error when the function response is not JSON.
+      }
+    }
+    throw new Error(message.includes("404") || message.toLowerCase().includes("not found")
+      ? "AI Coach is not deployed yet. Deploy the supabase/functions/ai-coach Edge Function, then try again."
+      : message);
+  }
+  if (!data?.content) throw new Error("AI Coach returned an empty response.");
   return { content: data.content as string, actions: (data.actions ?? []) as AiAction[] };
 }
