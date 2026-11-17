@@ -43,5 +43,11 @@
 [data-theme="dark"] .workspace-menu,[data-theme="system"] .workspace-menu{background:#262536}
 
 .topbar{position:relative;z-index:20}
+.academic-form{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0 15px}
+.academic-form input,.academic-form select{min-width:0;flex:1;border:1px solid var(--line);border-radius:7px;padding:9px 10px;background:transparent;color:var(--ink);font:inherit;font-size:10px}
+.academic-form .primary-button{padding:9px 10px}
+.academic-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.academic-heading h2{margin-top:0}
+.academic-notice{margin:0 0 10px;padding:8px 10px;border-radius:7px;background:var(--soft-purple);color:#6254cf;font-size:10px}
 .profile-wrap{position:relative;z-index:30}
 .profile-menu{right:0;top:calc(100% + 12px);z-index:40;box-shadow:0 12px 30px #27234432}
