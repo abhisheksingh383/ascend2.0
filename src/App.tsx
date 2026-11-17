@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight, BarChart3, Bell, BookOpen, BrainCircuit, CalendarDays, Check,
   ChevronDown, CircleHelp, Clock3, Code2, Flame, LayoutDashboard, LogOut,
@@ -53,6 +53,9 @@ function App() {
   const [focusStartedAt, setFocusStartedAt] = useState<number | null>(null);
   const [focusNow, setFocusNow] = useState(() => Date.now());
   const [activityDates, setActivityDates] = useState<ActivityDate[]>([]);
+  const [activeTimeByDate, setActiveTimeByDate] = useState<Record<string, number>>({});
+  const activeTimeRef = useRef<Record<string, number>>({});
+  const lastInteractionRef = useRef(Date.now());
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -62,7 +65,7 @@ function App() {
     const saved = localStorage.getItem("ascend-state");
     if (!saved) return;
     try {
-      const parsed = JSON.parse(saved) as { tasks?: Task[]; habits?: Habit[]; streakCoins?: number; streakFreezes?: number; rewardedTaskIds?: number[]; rewardedHabitIds?: number[]; focusSessions?: FocusSession[]; activityDates?: ActivityDate[] };
+      const parsed = JSON.parse(saved) as { tasks?: Task[]; habits?: Habit[]; streakCoins?: number; streakFreezes?: number; rewardedTaskIds?: number[]; rewardedHabitIds?: number[]; focusSessions?: FocusSession[]; activityDates?: ActivityDate[]; activeTimeByDate?: Record<string, number> };
       const isSeededDemo = parsed.tasks?.length === 4
         && parsed.tasks.every((task) => [1, 2, 3, 4].includes(task.id))
         && parsed.habits?.length === 3
@@ -77,21 +80,50 @@ function App() {
       if (parsed.rewardedHabitIds) setRewardedHabitIds(parsed.rewardedHabitIds);
       if (parsed.focusSessions) setFocusSessions(parsed.focusSessions);
       if (parsed.activityDates) setActivityDates(parsed.activityDates);
+      if (parsed.activeTimeByDate) {
+        activeTimeRef.current = parsed.activeTimeByDate;
+        setActiveTimeByDate(parsed.activeTimeByDate);
+      }
     } catch { localStorage.removeItem("ascend-state"); }
   }, []);
   useEffect(() => {
-    localStorage.setItem("ascend-state", JSON.stringify({ tasks, habits, streakCoins, streakFreezes, rewardedTaskIds, rewardedHabitIds, focusSessions, activityDates }));
+    localStorage.setItem("ascend-state", JSON.stringify({ tasks, habits, streakCoins, streakFreezes, rewardedTaskIds, rewardedHabitIds, focusSessions, activityDates, activeTimeByDate }));
     if (supabase && user?.email) {
       supabase.auth.getUser().then(({ data }) => {
-        if (data.user) saveUserData(data.user.id, tasks, habits, { focusSessions, activityDates, streakCoins, streakFreezes }).catch(() => undefined);
+        if (data.user) saveUserData(data.user.id, tasks, habits, { focusSessions, activityDates, activeTimeByDate, streakCoins, streakFreezes }).catch(() => undefined);
       });
     }
-  }, [tasks, habits, streakCoins, streakFreezes, rewardedTaskIds, rewardedHabitIds, focusSessions, activityDates, user]);
+  }, [tasks, habits, streakCoins, streakFreezes, rewardedTaskIds, rewardedHabitIds, focusSessions, activityDates, activeTimeByDate, user]);
   useEffect(() => {
     if (focusStartedAt === null) return;
     const timer = window.setInterval(() => setFocusNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [focusStartedAt]);
+  useEffect(() => {
+    const recordActiveSecond = () => {
+      if (document.visibilityState !== "visible" || Date.now() - lastInteractionRef.current > 5 * 60 * 1000) return;
+      const key = localDateKey(new Date());
+      activeTimeRef.current = { ...activeTimeRef.current, [key]: (activeTimeRef.current[key] ?? 0) + 1 };
+    };
+    const markInteraction = () => { lastInteractionRef.current = Date.now(); };
+    const flushActiveTime = () => setActiveTimeByDate({ ...activeTimeRef.current });
+    const timer = window.setInterval(() => {
+      recordActiveSecond();
+      if (Object.values(activeTimeRef.current).reduce((total, seconds) => total + seconds, 0) % 15 === 0) flushActiveTime();
+    }, 1000);
+    window.addEventListener("pointerdown", markInteraction, { passive: true });
+    window.addEventListener("keydown", markInteraction);
+    window.addEventListener("scroll", markInteraction, { passive: true });
+    document.addEventListener("visibilitychange", flushActiveTime);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("pointerdown", markInteraction);
+      window.removeEventListener("keydown", markInteraction);
+      window.removeEventListener("scroll", markInteraction);
+      document.removeEventListener("visibilitychange", flushActiveTime);
+      flushActiveTime();
+    };
+  }, []);
   useEffect(() => {
     localStorage.setItem("ascend-workspace", workspaceName);
   }, [workspaceName]);
@@ -106,6 +138,11 @@ function App() {
         if (saved?.habits) setHabits(saved.habits as Habit[]);
         if (saved?.focus_sessions) setFocusSessions(saved.focus_sessions as FocusSession[]);
         if (saved?.activity_dates) setActivityDates(saved.activity_dates as ActivityDate[]);
+        if (saved?.active_time_by_date) {
+          const activeTime = saved.active_time_by_date as Record<string, number>;
+          activeTimeRef.current = activeTime;
+          setActiveTimeByDate(activeTime);
+        }
         if (typeof saved?.streak_coins === "number") setStreakCoins(saved.streak_coins);
         if (typeof saved?.streak_freezes === "number") setStreakFreezes(saved.streak_freezes);
       }
@@ -169,6 +206,7 @@ function App() {
   };
   const focusElapsedMinutes = focusStartedAt === null ? 0 : (focusNow - focusStartedAt) / 60000;
   const totalFocusMinutes = focusSessions.reduce((total, session) => total + session.durationMinutes, 0) + focusElapsedMinutes;
+  const totalActiveMinutes = Object.values(activeTimeByDate).reduce((total, seconds) => total + seconds, 0) / 60;
   const toggleFocus = () => {
     if (focusStartedAt !== null) {
       const durationMinutes = Math.max(0, (Date.now() - focusStartedAt) / 60000);
@@ -195,7 +233,7 @@ function App() {
     <main className="main-content">
       <header className="topbar"><button className="mobile-menu" onClick={() => setMobileNav(true)} aria-label="Open navigation"><Menu size={21} /></button><div className="breadcrumb"><span>Workspace</span><span className="crumb-slash">/</span><strong>{activeNav}</strong></div><div className="top-actions"><button className="icon-btn search-btn" onClick={() => setShowSearch(true)} aria-label="Search"><Search size={18} /><span>Search</span><kbd>⌘ K</kbd></button><button className="icon-btn" onClick={() => setShowNotifications((open) => !open)} aria-label="Notifications" aria-expanded={showNotifications}><Bell size={18} /><i className="notification-dot" /></button><ProfileMenu user={user} onLogout={logout} onSettings={() => setView("Settings")} /></div>{showNotifications && <NotificationPanel onClose={() => setShowNotifications(false)} />}</header>
       {coinNotice && <button className="coin-notice" onClick={() => setCoinNotice("")}>{coinNotice} <X size={13} /></button>}
-      {activeNav === "Overview" ? <Overview user={user} dateLabel={dateLabel} tasks={tasks} habits={habits} xp={xp} totalFocusMinutes={totalFocusMinutes} focusSessions={focusSessions} focusRunning={focusStartedAt !== null} streak={streakMetrics.current} onToggleFocus={toggleFocus} onTask={toggleTask} onHabit={toggleHabit} onAdd={() => setShowAddTask(true)} onView={setView} onStreak={() => setShowStreakInsight(true)} onCoach={() => setShowCoach(true)} /> : <WorkspaceView view={activeNav} tasks={tasks} habits={habits} xp={xp} streakCoins={streakCoins} streakFreezes={streakFreezes} theme={theme} onTheme={setTheme} onTask={toggleTask} onHabit={toggleHabit} onAdd={() => setShowAddTask(true)} onView={setView} onBuyFreeze={buyFreeze} />}
+      {activeNav === "Overview" ? <Overview user={user} dateLabel={dateLabel} tasks={tasks} habits={habits} xp={xp} totalActiveMinutes={totalActiveMinutes} activeTimeByDate={activeTimeByDate} focusRunning={focusStartedAt !== null} streak={streakMetrics.current} onToggleFocus={toggleFocus} onTask={toggleTask} onHabit={toggleHabit} onAdd={() => setShowAddTask(true)} onView={setView} onStreak={() => setShowStreakInsight(true)} onCoach={() => setShowCoach(true)} /> : <WorkspaceView view={activeNav} tasks={tasks} habits={habits} xp={xp} streakCoins={streakCoins} streakFreezes={streakFreezes} theme={theme} onTheme={setTheme} onTask={toggleTask} onHabit={toggleHabit} onAdd={() => setShowAddTask(true)} onView={setView} onBuyFreeze={buyFreeze} />}
       <footer className="page-footer"><span>Ascend is your space to make progress visible.</span><span>{supabase ? "Cloud sync ready" : "Guest mode · Your data is saved locally"}</span></footer>
     </main>
     {showAddTask && <div className="modal-backdrop" onClick={() => setShowAddTask(false)}><div className="modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">NEW TASK</p><h2>What will you accomplish?</h2></div><button className="icon-btn" onClick={() => setShowAddTask(false)}><X size={18} /></button></div><input autoFocus value={newTaskTitle} onChange={(event) => setNewTaskTitle(event.target.value)} onKeyDown={(event) => event.key === "Enter" && addTask()} placeholder="e.g. Finish chapter 3 notes" /><div className="modal-actions"><button className="secondary-button" onClick={() => setShowAddTask(false)}>Cancel</button><button className="primary-button" onClick={addTask}>Create task <Plus size={16} /></button></div></div></div>}
@@ -235,10 +273,10 @@ function PasswordChecklist({ checks }: { checks: { length: boolean; upper: boole
   return <div className="password-checklist" aria-live="polite">{items.map(([key, label]) => <span className={checks[key as keyof typeof checks] ? "valid" : ""} key={key}>{checks[key as keyof typeof checks] ? <Check size={12} /> : <span className="requirement-dot" />}{label}</span>)}</div>;
 }
 
-function Overview({ user, dateLabel, tasks, habits, xp, streak, totalFocusMinutes, focusSessions, focusRunning, onToggleFocus, onTask, onHabit, onAdd, onView, onStreak, onCoach }: { user: User; dateLabel: string; tasks: Task[]; habits: Habit[]; xp: number; streak: number; totalFocusMinutes: number; focusSessions: FocusSession[]; focusRunning: boolean; onToggleFocus: () => void; onTask: (id: number) => void; onHabit: (id: number) => void; onAdd: () => void; onView: (view: View) => void; onStreak: () => void; onCoach: () => void }) {
+function Overview({ user, dateLabel, tasks, habits, xp, streak, totalActiveMinutes, activeTimeByDate, focusRunning, onToggleFocus, onTask, onHabit, onAdd, onView, onStreak, onCoach }: { user: User; dateLabel: string; tasks: Task[]; habits: Habit[]; xp: number; streak: number; totalActiveMinutes: number; activeTimeByDate: Record<string, number>; focusRunning: boolean; onToggleFocus: () => void; onTask: (id: number) => void; onHabit: (id: number) => void; onAdd: () => void; onView: (view: View) => void; onStreak: () => void; onCoach: () => void }) {
   const completed = tasks.filter((task) => task.completed).length; const rate = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
-  const focusLabel = totalFocusMinutes > 0 ? `${Math.floor(totalFocusMinutes / 60)}h ${Math.round(totalFocusMinutes % 60)}m` : "No sessions logged";
-  return <div className="page-wrap"><section className="welcome-row"><div><p className="eyebrow">{dateLabel}</p><h1>Good morning, {user.name.split(" ")[0]} <span>✦</span></h1><p className="subheading">A little progress every day adds up to remarkable results.</p></div><div className="header-buttons"><button className="secondary-button" onClick={() => onView("Planner")}><CalendarDays size={16} /> Plan your day</button><button className="primary-button" onClick={onAdd}><Plus size={17} /> Add task</button></div></section><section className="stats-grid"><StatCard icon={<Flame size={18} />} label="Current streak" value={`${streak} ${streak === 1 ? "day" : "days"}`} trend={streak ? "Based on completed activity" : "Complete a task or habit today"} tone="orange" onClick={() => onView("Insights")} /><StatCard icon={<Sparkles size={18} />} label="Total XP" value={xp.toLocaleString()} trend={xp ? "Earned from completed work" : "Complete work to earn XP"} tone="purple" onClick={() => onView("Insights")} /><StatCard icon={<Clock3 size={18} />} label="Focus time" value={focusLabel} trend={focusRunning ? "Session in progress" : "Start a focus session"} tone="blue" onClick={() => onView("Insights")} /><StatCard icon={<Target size={18} />} label="Weekly score" value={`${rate}%`} trend={rate ? "Based on task completion" : "Complete a task to build your score"} tone="green" onClick={() => onView("Insights")} /></section><section className="content-grid"><div className="left-column"><SectionHeading title="Today's focus" subtitle={`${completed} of ${tasks.length} tasks complete`} action="View planner" onClick={() => onView("Planner")} /><div className="focus-card"><div className="progress-line"><span style={{ width: `${rate}%` }} /></div><div className="focus-summary"><strong>{rate}% complete</strong><span>{tasks.length - completed} tasks remaining</span></div><div className="focus-session"><Clock3 size={15} /><span>{focusRunning ? "Focus session running" : "Log real focus time"}</span><button className="secondary-button" onClick={onToggleFocus}>{focusRunning ? "Stop session" : "Start session"}</button></div><div className="task-list">{tasks.slice(0, 5).map((task) => <TaskRow key={task.id} task={task} onToggle={onTask} />)}</div><button className="add-task-link" onClick={onAdd}><Plus size={16} /> Add another task</button></div><SectionHeading title="Daily habits" subtitle="Small actions, compounded daily." action="Manage habits" onClick={() => onView("Habits")} /><div className="habits-grid">{habits.map((habit) => <HabitCard key={habit.id} habit={habit} onToggle={onHabit} />)}</div></div><RightRail xp={xp} onView={onView} onCoach={onCoach} totalFocusMinutes={totalFocusMinutes} focusSessions={focusSessions} /></section></div>;
+  const focusLabel = totalActiveMinutes > 0 ? `${Math.floor(totalActiveMinutes / 60)}h ${Math.round(totalActiveMinutes % 60)}m` : "No activity logged";
+  return <div className="page-wrap"><section className="welcome-row"><div><p className="eyebrow">{dateLabel}</p><h1>Good morning, {user.name.split(" ")[0]} <span>✦</span></h1><p className="subheading">A little progress every day adds up to remarkable results.</p></div><div className="header-buttons"><button className="secondary-button" onClick={() => onView("Planner")}><CalendarDays size={16} /> Plan your day</button><button className="primary-button" onClick={onAdd}><Plus size={17} /> Add task</button></div></section><section className="stats-grid"><StatCard icon={<Flame size={18} />} label="Current streak" value={`${streak} ${streak === 1 ? "day" : "days"}`} trend={streak ? "Based on completed activity" : "Complete a task or habit today"} tone="orange" onClick={() => onView("Insights")} /><StatCard icon={<Sparkles size={18} />} label="Total XP" value={xp.toLocaleString()} trend={xp ? "Earned from completed work" : "Complete work to earn XP"} tone="purple" onClick={() => onView("Insights")} /><StatCard icon={<Clock3 size={18} />} label="Active time" value={focusLabel} trend={focusRunning ? "Focus session in progress" : "Tracked while you use Ascend"} tone="blue" onClick={() => onView("Insights")} /><StatCard icon={<Target size={18} />} label="Weekly score" value={`${rate}%`} trend={rate ? "Based on task completion" : "Complete a task to build your score"} tone="green" onClick={() => onView("Insights")} /></section><section className="content-grid"><div className="left-column"><SectionHeading title="Today's focus" subtitle={`${completed} of ${tasks.length} tasks complete`} action="View planner" onClick={() => onView("Planner")} /><div className="focus-card"><div className="progress-line"><span style={{ width: `${rate}%` }} /></div><div className="focus-summary"><strong>{rate}% complete</strong><span>{tasks.length - completed} tasks remaining</span></div><div className="focus-session"><Clock3 size={15} /><span>{focusRunning ? "Focus session running" : "Log real focus time"}</span><button className="secondary-button" onClick={onToggleFocus}>{focusRunning ? "Stop session" : "Start session"}</button></div><div className="task-list">{tasks.slice(0, 5).map((task) => <TaskRow key={task.id} task={task} onToggle={onTask} />)}</div><button className="add-task-link" onClick={onAdd}><Plus size={16} /> Add another task</button></div><SectionHeading title="Daily habits" subtitle="Small actions, compounded daily." action="Manage habits" onClick={() => onView("Habits")} /><div className="habits-grid">{habits.map((habit) => <HabitCard key={habit.id} habit={habit} onToggle={onHabit} />)}</div></div><RightRail xp={xp} onView={onView} onCoach={onCoach} activeTimeByDate={activeTimeByDate} /></section></div>;
 }
 
 function WorkspaceView({ view, tasks, habits, xp, streakCoins, streakFreezes, theme, onTheme, onTask, onHabit, onAdd, onView, onBuyFreeze }: { view: Exclude<View, "Overview">; tasks: Task[]; habits: Habit[]; xp: number; streakCoins: number; streakFreezes: number; theme: Theme; onTheme: (theme: Theme) => void; onTask: (id: number) => void; onHabit: (id: number) => void; onAdd: () => void; onView: (view: View) => void; onBuyFreeze: (cost: number, quantity: number) => boolean }) {
@@ -249,32 +287,13 @@ function WorkspaceView({ view, tasks, habits, xp, streakCoins, streakFreezes, th
   return <div className="page-wrap"><section className="workspace-heading"><div><p className="eyebrow">ASCEND WORKSPACE</p><h1>{config.title}</h1><p className="subheading">{config.subtitle}</p></div><div className="header-buttons">{view === "Planner" && <button className="primary-button" onClick={onAdd}><Plus size={17} /> Add task</button>}</div></section>{view === "Planner" && <div className="workspace-panel"><SectionHeading title="All tasks" subtitle={`${tasks.filter((task) => !task.completed).length} still in motion`} /><div className="planner-toolbar">{(["Today", "Upcoming", "Completed"] as const).map((filter) => <button key={filter} className={`filter-chip ${taskFilter === filter ? "active" : ""}`} onClick={() => setTaskFilter(filter)}>{filter}</button>)}</div>{visibleTasks.length > 0 ? visibleTasks.map((task) => <TaskRow key={task.id} task={task} onToggle={onTask} />) : <div className="empty-state">No {taskFilter.toLowerCase()} tasks yet.</div>}</div>}{view === "Habits" && <div className="detail-grid">{habits.map((habit) => <HabitCard key={habit.id} habit={habit} onToggle={onHabit} />)}<div className="add-placeholder" onClick={() => onView("Settings")}><Plus size={20} /><strong>Create a new habit</strong><span>Open settings to configure your routine.</span></div></div>}{view === "Marketplace" && <MarketplaceView coins={streakCoins} freezes={streakFreezes} onBuy={onBuyFreeze} />}{view === "Academics" && <AcademicView />}{view === "Coding" && <CodingView />}{view === "Insights" && <InsightsView tasks={tasks} xp={xp} />}{view === "Achievements" && <AchievementsView xp={xp} onView={onView} />}{view === "Settings" && <SettingsView theme={theme} onTheme={onTheme} />}</div>;
 }
 
-function RightRail({ xp, onView, onCoach, totalFocusMinutes, focusSessions }: { xp: number; onView: (view: View) => void; onCoach: () => void; totalFocusMinutes: number; focusSessions: FocusSession[] }) { const [showCoachMenu, setShowCoachMenu] = useState(false); const level = Math.floor(xp / 500) + 1; const nextLevelXp = level * 500; const xpToNext = nextLevelXp - xp; return <div className="right-column"><section className="level-card"><div className="level-top"><div><p className="card-overline">YOUR PROGRESS</p><h2>Level {String(level).padStart(2, "0")} <span>✦</span></h2></div><div className="level-badge">{String(level).padStart(2, "0")}</div></div><div className="level-progress"><div className="level-progress-label"><span><strong>{xp.toLocaleString()} XP</strong> <em>/ {nextLevelXp.toLocaleString()} XP</em></span><strong>Explorer</strong></div><div className="progress-line light"><span style={{ width: `${Math.min(100, (xp % 500) / 5)}%` }} /></div></div><div className="level-footer"><span><Trophy size={14} /> {xpToNext} XP to next level</span><button onClick={() => onView("Achievements")}>View rewards <ArrowUpRight size={14} /></button></div></section><section className="ai-card"><div className="ai-card-top"><button className="ai-spark" onClick={onCoach} aria-label="Open AI Coach"><BrainCircuit size={19} /></button><span className="live-pill">AI COACH <i /></span><div className="ai-menu-wrap"><button className="ai-more" onClick={() => setShowCoachMenu((open) => !open)} aria-label="AI Coach options"><MoreHorizontal size={18} /></button>{showCoachMenu && <div className="ai-menu"><button onClick={() => { setShowCoachMenu(false); onCoach(); }}>Review my rhythm</button><button onClick={() => setShowCoachMenu(false)}>Dismiss suggestion</button></div>}</div></div><h2>You&apos;re building a<br /><em>strong rhythm.</em></h2><p>AI Coach spots patterns in your tasks and habits, then suggests one practical next step.</p><button className="ai-action" onClick={onCoach}>Open AI Coach <ArrowUpRight size={14} /></button></section><ActivityCard onView={onView} focusSessions={focusSessions} /><section className="quote-card"><span className="quote-mark">“</span><p>Success is the sum of small efforts, repeated day in and day out.</p><small>— Robert Collier</small></section></div>; }
+function RightRail({ xp, onView, onCoach, activeTimeByDate }: { xp: number; onView: (view: View) => void; onCoach: () => void; activeTimeByDate: Record<string, number> }) { const [showCoachMenu, setShowCoachMenu] = useState(false); const level = Math.floor(xp / 500) + 1; const nextLevelXp = level * 500; const xpToNext = nextLevelXp - xp; return <div className="right-column"><section className="level-card"><div className="level-top"><div><p className="card-overline">YOUR PROGRESS</p><h2>Level {String(level).padStart(2, "0")} <span>✦</span></h2></div><div className="level-badge">{String(level).padStart(2, "0")}</div></div><div className="level-progress"><div className="level-progress-label"><span><strong>{xp.toLocaleString()} XP</strong> <em>/ {nextLevelXp.toLocaleString()} XP</em></span><strong>Explorer</strong></div><div className="progress-line light"><span style={{ width: `${Math.min(100, (xp % 500) / 5)}%` }} /></div></div><div className="level-footer"><span><Trophy size={14} /> {xpToNext} XP to next level</span><button onClick={() => onView("Achievements")}>View rewards <ArrowUpRight size={14} /></button></div></section><section className="ai-card"><div className="ai-card-top"><button className="ai-spark" onClick={onCoach} aria-label="Open AI Coach"><BrainCircuit size={19} /></button><span className="live-pill">AI COACH <i /></span><div className="ai-menu-wrap"><button className="ai-more" onClick={() => setShowCoachMenu((open) => !open)} aria-label="AI Coach options"><MoreHorizontal size={18} /></button>{showCoachMenu && <div className="ai-menu"><button onClick={() => { setShowCoachMenu(false); onCoach(); }}>Review my rhythm</button><button onClick={() => setShowCoachMenu(false)}>Dismiss suggestion</button></div>}</div></div><h2>You&apos;re building a<br /><em>strong rhythm.</em></h2><p>AI Coach spots patterns in your tasks and habits, then suggests one practical next step.</p><button className="ai-action" onClick={onCoach}>Open AI Coach <ArrowUpRight size={14} /></button></section><ActivityCard onView={onView} activeTimeByDate={activeTimeByDate} /><section className="quote-card"><span className="quote-mark">“</span><p>Success is the sum of small efforts, repeated day in and day out.</p><small>— Robert Collier</small></section></div>; }
 
-function getFocusMinutesByDate(sessions: FocusSession[]) {
-  const minutesByDate = new Map<string, number>();
-  sessions.forEach((session) => {
-    let cursor = new Date(session.startedAt);
-    const end = new Date(session.endedAt);
-    if (Number.isNaN(cursor.getTime()) || Number.isNaN(end.getTime()) || end <= cursor) return;
-    while (cursor < end) {
-      const nextDay = new Date(cursor);
-      nextDay.setHours(24, 0, 0, 0);
-      const segmentEnd = nextDay < end ? nextDay : end;
-      const minutes = (segmentEnd.getTime() - cursor.getTime()) / 60000;
-      const key = localDateKey(cursor);
-      minutesByDate.set(key, (minutesByDate.get(key) ?? 0) + minutes);
-      cursor = segmentEnd;
-    }
-  });
-  return minutesByDate;
-}
-
-function ActivityCard({ onView, focusSessions }: { onView: (view: View) => void; focusSessions: FocusSession[] }) {
+function ActivityCard({ onView, activeTimeByDate }: { onView: (view: View) => void; activeTimeByDate: Record<string, number> }) {
   const [range, setRange] = useState<"This week" | "Last week" | "This month">("This week");
   const [selectedDay, setSelectedDay] = useState(3);
   const isMonthly = range === "This month";
-  const minutesByDate = useMemo(() => getFocusMinutesByDate(focusSessions), [focusSessions]);
+  const minutesByDate = useMemo(() => new Map(Object.entries(activeTimeByDate).map(([date, seconds]) => [date, seconds / 60])), [activeTimeByDate]);
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthWeekCount = Math.ceil((monthStart.getDay() + new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()) / 7);

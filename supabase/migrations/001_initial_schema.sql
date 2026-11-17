@@ -4,6 +4,7 @@ create table if not exists public.user_workspaces (
   habits jsonb not null default '[]'::jsonb,
   focus_sessions jsonb not null default '[]'::jsonb,
   activity_dates jsonb not null default '[]'::jsonb,
+  active_time_by_date jsonb not null default '{}'::jsonb,
   streak_coins integer not null default 350,
   streak_freezes integer not null default 1,
   updated_at timestamptz not null default now()
@@ -11,6 +12,7 @@ create table if not exists public.user_workspaces (
 
 alter table public.user_workspaces add column if not exists focus_sessions jsonb not null default '[]'::jsonb;
 alter table public.user_workspaces add column if not exists activity_dates jsonb not null default '[]'::jsonb;
+alter table public.user_workspaces add column if not exists active_time_by_date jsonb not null default '{}'::jsonb;
 alter table public.user_workspaces add column if not exists streak_coins integer not null default 350;
 alter table public.user_workspaces add column if not exists streak_freezes integer not null default 1;
 
