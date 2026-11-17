@@ -73,6 +73,10 @@
 .coach-proposal .secondary-button{grid-column:3;grid-row:1 / span 2;padding:7px 9px}
 .profile-setup-backdrop{z-index:60}
 .profile-setup{width:min(520px,calc(100vw - 32px));max-height:90vh;overflow:auto}
+.coach-backdrop{justify-content:flex-end;align-items:stretch}
+.coach-modal{width:min(620px,100vw);max-width:none;height:100%;max-height:none;overflow-y:auto;border-radius:16px 0 0 16px;animation:coach-slide-in .22s ease both}
+@keyframes coach-slide-in{from{transform:translateX(100%);opacity:.7}to{transform:translateX(0);opacity:1}}
+@media(max-width:700px){.coach-modal{width:100%;border-radius:0}}
 .profile-setup-form{display:grid;grid-template-columns:1fr 1fr;gap:13px}
 .profile-setup-form label{display:flex;flex-direction:column;gap:6px;color:#535867;font-size:10px;font-weight:700}
 .profile-setup-form label:first-child,.profile-setup-form label:last-of-type,.profile-setup-form .form-error,.profile-setup-form .auth-submit{grid-column:span 2}
