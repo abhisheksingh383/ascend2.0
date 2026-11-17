@@ -65,6 +65,7 @@ export async function requestAiCoach(feature: "coach" | "challenge" | "review" |
   const { data, error } = await supabase.functions.invoke("ai-coach", { body: { feature, prompt, context } });
   if (error) {
     let message = error.message;
+    const isMissingFunction = error.context instanceof Response && error.context.status === 404;
     if (error.context instanceof Response) {
       try {
         const details = await error.context.clone().json() as { error?: string };
@@ -73,7 +74,7 @@ export async function requestAiCoach(feature: "coach" | "challenge" | "review" |
         // Keep the SDK error when the function response is not JSON.
       }
     }
-    throw new Error(message.includes("404") || message.toLowerCase().includes("not found")
+    throw new Error(isMissingFunction
       ? "AI Coach is not deployed yet. Deploy the supabase/functions/ai-coach Edge Function, then try again."
       : message);
   }
