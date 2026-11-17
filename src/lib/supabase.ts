@@ -46,3 +46,11 @@ export async function loadUserData(userId: string) {
   if (error) throw error;
   return data;
 }
+
+export async function requestAiCoach(feature: "coach" | "challenge" | "review" | "explainer", prompt: string, context: unknown = {}) {
+  if (!supabase) throw new Error("Gemini Coach requires Supabase configuration.");
+  const { data, error } = await supabase.functions.invoke("ai-coach", { body: { feature, prompt, context } });
+  if (error) throw error;
+  if (!data?.content) throw new Error("Gemini Coach returned an empty response.");
+  return data.content as string;
+}

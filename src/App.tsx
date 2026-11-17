@@ -5,7 +5,7 @@ import {
   Menu, MoreHorizontal, Pencil, Plus, Search, Settings, ShieldCheck, ShoppingBag, Sparkles,
   Target, Trophy, UserRound, X,
 } from "lucide-react";
-import { authProviders, loadUserData, saveUserData, signInWithOAuth, supabase } from "./lib/supabase";
+import { authProviders, loadUserData, requestAiCoach, saveUserData, signInWithOAuth, supabase } from "./lib/supabase";
 
 type Task = { id: number; title: string; category: "Academic" | "Coding" | "Personal"; due: string; completed: boolean; priority: "High" | "Medium" | "Low" };
 type Habit = { id: number; label: string; icon: string; color: string; progress: number; target: string; completed: boolean };
@@ -466,7 +466,27 @@ function StreakInsight({ metrics, activityDates, onClose }: { metrics: ReturnTyp
   return <div className="modal-backdrop" onClick={onClose}><div className="streak-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">STREAK INSIGHT</p><h2>Your consistency calendar</h2><p className="modal-subtitle">You&apos;ve continued your streak for <strong>{metrics.current} consecutive days</strong>.</p></div><button className="icon-btn" onClick={onClose} aria-label="Close streak insight"><X size={18} /></button></div><div className="streak-summary"><div><Flame size={18} /><strong>{metrics.current} days</strong><span>Current streak</span></div><div><Trophy size={18} /><strong>{metrics.longest} days</strong><span>Longest streak</span></div><div><Check size={18} /><strong>{metrics.activeThisMonth} days</strong><span>Active this month</span></div></div><div className="calendar-card"><div className="calendar-heading"><h3>{monthName}</h3><span><i className="calendar-dot active" /> Active <i className="calendar-dot missed" /> No activity</span></div><div className="calendar-weekdays">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <span key={day}>{day}</span>)}</div><div className="calendar-grid">{days.map((day, index) => { const key = day ? localDateKey(new Date(year, month, day)) : ""; return <div key={index} className={`calendar-day ${day && activityDates.includes(key) ? "active" : ""} ${day === today.getDate() ? "today" : ""}`}>{day && <span>{day}</span>}</div>; })}</div></div><p className="streak-note"><Sparkles size={14} /> Complete a task or habit today to keep your activity streak going.</p></div></div>;
 }
 function NotificationPanel({ onClose }: { onClose: () => void }) { return <div className="notification-panel"><div className="notification-heading"><strong>Notifications</strong><button onClick={onClose} aria-label="Close notifications"><X size={15} /></button></div><div className="notification-item"><Sparkles size={15} /><span><strong>AI Coach has a suggestion</strong><small>Review your focus rhythm for today.</small></span></div><div className="notification-item"><Flame size={15} /><span><strong>Your 12-day streak is active</strong><small>Complete one task to keep it going.</small></span></div><div className="notification-item"><CalendarDays size={15} /><span><strong>OS scheduling report is due soon</strong><small>Your deadline is in 2 days.</small></span></div><button className="notification-clear" onClick={onClose}>Mark all as read</button></div>; }
-function CoachPanel({ tasks, habits, onClose, onAddTask }: { tasks: Task[]; habits: Habit[]; onClose: () => void; onAddTask: (title: string) => void }) { const openTasks = tasks.filter((task) => !task.completed).length; const activeHabits = habits.filter((habit) => habit.completed).length; const recommendation = openTasks > 2 ? "Choose one priority task and protect a 25-minute focus block for it." : activeHabits === 0 ? "Start with one small habit check-in before your first task." : "Your rhythm is steady. Add a short reflection after your next focus block."; return <div className="modal-backdrop" onClick={onClose}><div className="modal coach-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">AI COACH</p><h2>Your next best step</h2><p className="modal-subtitle">A lightweight recommendation based on this workspace&apos;s tasks and habits.</p></div><button className="icon-btn" onClick={onClose} aria-label="Close AI Coach"><X size={18} /></button></div><div className="coach-recommendation"><div className="ai-spark"><BrainCircuit size={20} /></div><div><strong>{recommendation}</strong><p>{openTasks} open tasks · {activeHabits} habits checked in</p></div></div><div className="coach-actions"><button className="secondary-button" onClick={() => onAddTask("25-minute focused work block")}><Plus size={15} /> Add focus block</button><button className="primary-button" onClick={onClose}>Got it</button></div></div></div>; }
+function CoachPanel({ tasks, habits, onClose, onAddTask }: { tasks: Task[]; habits: Habit[]; onClose: () => void; onAddTask: (title: string) => void }) {
+  const openTasks = tasks.filter((task) => !task.completed).length;
+  const activeHabits = habits.filter((habit) => habit.completed).length;
+  const recommendation = openTasks > 2 ? "Choose one priority task and protect a 25-minute focus block for it." : activeHabits === 0 ? "Start with one small habit check-in before your first task." : "Your rhythm is steady. Add a short reflection after your next focus block.";
+  const [response, setResponse] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const askGemini = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const content = await requestAiCoach("coach", "Review this student's current Ascend workspace and give one practical next action. Keep it supportive, specific, and under 80 words.", { openTasks, activeHabits, tasks, habits });
+      setResponse(content);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Gemini Coach could not respond.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  return <div className="modal-backdrop" onClick={onClose}><div className="modal coach-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">GEMINI AI COACH</p><h2>Your next best step</h2><p className="modal-subtitle">Personalized guidance based on this workspace&apos;s tasks and habits.</p></div><button className="icon-btn" onClick={onClose} aria-label="Close AI Coach"><X size={18} /></button></div><div className="coach-recommendation"><div className="ai-spark"><BrainCircuit size={20} /></div><div><strong>{response || recommendation}</strong><p>{response ? "Generated by Gemini" : `${openTasks} open tasks · ${activeHabits} habits checked in`}</p></div></div>{error && <div className="form-error">{error}</div>}<div className="coach-actions"><button className="secondary-button" onClick={() => onAddTask("25-minute focused work block")}><Plus size={15} /> Add focus block</button><button className="secondary-button" onClick={askGemini} disabled={loading}><BrainCircuit size={15} /> {loading ? "Asking Gemini..." : "Ask Gemini"}</button><button className="primary-button" onClick={onClose}>Got it</button></div></div></div>;
+}
 function ProfileMenu({ user, onLogout, onSettings }: { user: User; onLogout: () => void; onSettings: () => void }) {
   const [open, setOpen] = useState(false);
   const closeAnd = (action: () => void) => {

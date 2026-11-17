@@ -6,7 +6,16 @@
 4. Add the OAuth callback URL shown by Supabase to each provider.
 5. Deploy the Edge Functions in `functions/` and set their secrets with `supabase secrets set`.
 
-All browser-side data access is protected by RLS. AI, Calendar, GitHub, reminders, and Stripe secrets belong in Edge Functions, never in `VITE_` variables.
+All browser-side data access is protected by RLS. Gemini, Calendar, GitHub, reminders, and Stripe secrets belong in Edge Functions, never in `VITE_` variables.
+
+The AI Coach uses Gemini. Configure the key in Supabase, not in this repository:
+
+```bash
+supabase secrets set GEMINI_API_KEY=your-key GEMINI_MODEL=gemini-2.0-flash
+supabase functions deploy ai-coach
+```
+
+Never paste the Gemini key into `.env` values beginning with `VITE_`, `src/`, or committed files. If a key has been shared publicly, rotate it in Google AI Studio and use the replacement as the Supabase secret.
 
 For OAuth, enable Google and GitHub under Supabase Authentication > Providers, then add
 `https://ascend20.vercel.app/` to Authentication > URL Configuration > Redirect URLs.
