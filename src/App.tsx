@@ -114,11 +114,11 @@ function App() {
 
   if (!user) return <AuthScreen mode={authMode} setMode={setAuthMode} onAuth={setUser} />;
 
-  const completedTasks = tasks.filter((task) => task.completed).length;
-  const xp = completedTasks * 20 + habits.filter((habit) => habit.completed).length * 15;
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const completedTasks = useMemo(() => tasks.filter((task) => task.completed).length, [tasks]);
+  const xp = useMemo(() => completedTasks * 20 + habits.filter((habit) => habit.completed).length * 15, [completedTasks, habits]);
+  const todayKey = localDateKey(new Date());
   const markActivity = () => setActivityDates((current) => current.includes(todayKey) ? current : [...current, todayKey]);
-  const streakMetrics = getStreakMetrics(activityDates);
+  const streakMetrics = useMemo(() => getStreakMetrics(activityDates), [activityDates]);
   const toggleTask = (id: number) => {
     const task = tasks.find((item) => item.id === id);
     if (!task) return;
@@ -174,6 +174,7 @@ function App() {
       const durationMinutes = Math.max(0, (Date.now() - focusStartedAt) / 60000);
       if (durationMinutes >= 0.1) {
         setFocusSessions((current) => [...current, { id: Date.now(), startedAt: new Date(focusStartedAt).toISOString(), endedAt: new Date().toISOString(), durationMinutes }]);
+        markActivity();
       }
       setFocusStartedAt(null);
       setFocusNow(Date.now());
@@ -291,24 +292,42 @@ function SearchOverlay({ tasks, onView, onClose }: { tasks: Task[]; onView: (vie
 function getStreakMetrics(activityDates: string[]) {
   const dates = new Set(activityDates);
   const today = new Date();
+  const todayKey = localDateKey(today);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const anchor = dates.has(todayKey) ? today : dates.has(localDateKey(yesterday)) ? yesterday : null;
   let current = 0;
-  for (let offset = 0; offset < 366; offset += 1) {
-    const date = new Date(today);
-    date.setDate(today.getDate() - offset);
-    if (!dates.has(date.toISOString().slice(0, 10))) break;
-    current += 1;
+  if (anchor) {
+    for (let offset = 0; offset < 366; offset += 1) {
+      const date = new Date(anchor);
+      date.setDate(anchor.getDate() - offset);
+      if (!dates.has(localDateKey(date))) break;
+      current += 1;
+    }
   }
   let longest = 0;
   const sorted = [...dates].sort();
   let run = 0;
   sorted.forEach((date, index) => {
-    const previous = index > 0 ? new Date(`${sorted[index - 1]}T00:00:00`) : null;
-    const currentDate = new Date(`${date}T00:00:00`);
+    const previous = index > 0 ? parseDateKey(sorted[index - 1]) : null;
+    const currentDate = parseDateKey(date);
     run = previous && (currentDate.getTime() - previous.getTime()) === 86400000 ? run + 1 : 1;
     longest = Math.max(longest, run);
   });
-  const monthPrefix = today.toISOString().slice(0, 7);
+  const monthPrefix = localDateKey(today).slice(0, 7);
   return { current, longest, activeThisMonth: [...dates].filter((date) => date.startsWith(monthPrefix)).length };
+}
+
+function localDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateKey(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
 function StreakInsight({ metrics, activityDates, onClose }: { metrics: ReturnType<typeof getStreakMetrics>; activityDates: string[]; onClose: () => void }) {
@@ -319,7 +338,7 @@ function StreakInsight({ metrics, activityDates, onClose }: { metrics: ReturnTyp
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const days = Array.from({ length: firstDay + daysInMonth }, (_, index) => index < firstDay ? null : index - firstDay + 1);
-  return <div className="modal-backdrop" onClick={onClose}><div className="streak-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">STREAK INSIGHT</p><h2>Your consistency calendar</h2><p className="modal-subtitle">You&apos;ve continued your streak for <strong>{metrics.current} consecutive days</strong>.</p></div><button className="icon-btn" onClick={onClose} aria-label="Close streak insight"><X size={18} /></button></div><div className="streak-summary"><div><Flame size={18} /><strong>{metrics.current} days</strong><span>Current streak</span></div><div><Trophy size={18} /><strong>{metrics.longest} days</strong><span>Longest streak</span></div><div><Check size={18} /><strong>{metrics.activeThisMonth} days</strong><span>Active this month</span></div></div><div className="calendar-card"><div className="calendar-heading"><h3>{monthName}</h3><span><i className="calendar-dot active" /> Active <i className="calendar-dot missed" /> No activity</span></div><div className="calendar-weekdays">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <span key={day}>{day}</span>)}</div><div className="calendar-grid">{days.map((day, index) => { const key = day ? new Date(year, month, day).toISOString().slice(0, 10) : ""; return <div key={index} className={`calendar-day ${day && activityDates.includes(key) ? "active" : ""} ${day === today.getDate() ? "today" : ""}`}>{day && <span>{day}</span>}</div>; })}</div></div><p className="streak-note"><Sparkles size={14} /> Complete a task or habit today to keep your activity streak going.</p></div></div>;
+  return <div className="modal-backdrop" onClick={onClose}><div className="streak-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">STREAK INSIGHT</p><h2>Your consistency calendar</h2><p className="modal-subtitle">You&apos;ve continued your streak for <strong>{metrics.current} consecutive days</strong>.</p></div><button className="icon-btn" onClick={onClose} aria-label="Close streak insight"><X size={18} /></button></div><div className="streak-summary"><div><Flame size={18} /><strong>{metrics.current} days</strong><span>Current streak</span></div><div><Trophy size={18} /><strong>{metrics.longest} days</strong><span>Longest streak</span></div><div><Check size={18} /><strong>{metrics.activeThisMonth} days</strong><span>Active this month</span></div></div><div className="calendar-card"><div className="calendar-heading"><h3>{monthName}</h3><span><i className="calendar-dot active" /> Active <i className="calendar-dot missed" /> No activity</span></div><div className="calendar-weekdays">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <span key={day}>{day}</span>)}</div><div className="calendar-grid">{days.map((day, index) => { const key = day ? localDateKey(new Date(year, month, day)) : ""; return <div key={index} className={`calendar-day ${day && activityDates.includes(key) ? "active" : ""} ${day === today.getDate() ? "today" : ""}`}>{day && <span>{day}</span>}</div>; })}</div></div><p className="streak-note"><Sparkles size={14} /> Complete a task or habit today to keep your activity streak going.</p></div></div>;
 }
 function NotificationPanel({ onClose }: { onClose: () => void }) { return <div className="notification-panel"><div className="notification-heading"><strong>Notifications</strong><button onClick={onClose} aria-label="Close notifications"><X size={15} /></button></div><div className="notification-item"><Sparkles size={15} /><span><strong>AI Coach has a suggestion</strong><small>Review your focus rhythm for today.</small></span></div><div className="notification-item"><Flame size={15} /><span><strong>Your 12-day streak is active</strong><small>Complete one task to keep it going.</small></span></div><div className="notification-item"><CalendarDays size={15} /><span><strong>OS scheduling report is due soon</strong><small>Your deadline is in 2 days.</small></span></div><button className="notification-clear" onClick={onClose}>Mark all as read</button></div>; }
 function CoachPanel({ tasks, habits, onClose, onAddTask }: { tasks: Task[]; habits: Habit[]; onClose: () => void; onAddTask: (title: string) => void }) { const openTasks = tasks.filter((task) => !task.completed).length; const activeHabits = habits.filter((habit) => habit.completed).length; const recommendation = openTasks > 2 ? "Choose one priority task and protect a 25-minute focus block for it." : activeHabits === 0 ? "Start with one small habit check-in before your first task." : "Your rhythm is steady. Add a short reflection after your next focus block."; return <div className="modal-backdrop" onClick={onClose}><div className="modal coach-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">AI COACH</p><h2>Your next best step</h2><p className="modal-subtitle">A lightweight recommendation based on this workspace&apos;s tasks and habits.</p></div><button className="icon-btn" onClick={onClose} aria-label="Close AI Coach"><X size={18} /></button></div><div className="coach-recommendation"><div className="ai-spark"><BrainCircuit size={20} /></div><div><strong>{recommendation}</strong><p>{openTasks} open tasks · {activeHabits} habits checked in</p></div></div><div className="coach-actions"><button className="secondary-button" onClick={() => onAddTask("25-minute focused work block")}><Plus size={15} /> Add focus block</button><button className="primary-button" onClick={onClose}>Got it</button></div></div></div>; }
