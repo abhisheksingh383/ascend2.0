@@ -17,7 +17,7 @@ export type AiAction = {
   type: "add_task" | "delete_task" | "complete_task" | "create_subject";
   taskId?: number;
   title?: string;
-  category?: "Academic" | "Coding" | "Personal";
+  category?: "Academic" | "Personal";
   due?: string;
   priority?: "High" | "Medium" | "Low";
   reason?: string;
