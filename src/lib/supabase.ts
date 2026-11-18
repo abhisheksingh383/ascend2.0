@@ -37,7 +37,7 @@ export async function signInWithOAuth(provider: "google" | "github") {
   if (error) throw error;
 }
 
-export async function saveUserData(userId: string, tasks: unknown[], habits: unknown[], extras: { focusSessions?: unknown[]; activityDates?: string[]; activeTimeByDate?: Record<string, number>; streakCoins?: number; streakFreezes?: number } = {}) {
+export async function saveUserData(userId: string, tasks: unknown[], habits: unknown[], extras: { focusSessions?: unknown[]; activityDates?: string[]; activityCountsByDate?: Record<string, number>; activeTimeByDate?: Record<string, number>; streakCoins?: number; streakFreezes?: number } = {}) {
   if (!supabase) return;
   const { error } = await supabase.from("user_workspaces").upsert({
     user_id: userId,
@@ -53,7 +53,7 @@ export async function loadUserData(userId: string) {
   if (!supabase) return null;
   const { data, error } = await supabase
     .from("user_workspaces")
-    .select("tasks, habits, focus_sessions, activity_dates, active_time_by_date, streak_coins, streak_freezes")
+    .select("tasks, habits, focus_sessions, activity_dates, activity_counts_by_date, active_time_by_date, streak_coins, streak_freezes")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;

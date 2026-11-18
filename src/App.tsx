@@ -92,7 +92,14 @@ function App() {
       if (parsed.rewardedHabitIds) setRewardedHabitIds(parsed.rewardedHabitIds);
       if (parsed.focusSessions) setFocusSessions(parsed.focusSessions);
       if (parsed.activityDates) setActivityDates(parsed.activityDates);
-      if (parsed.activityCountsByDate) setActivityCountsByDate(parsed.activityCountsByDate);
+      if (parsed.activityCountsByDate) {
+        setActivityCountsByDate({
+          ...Object.fromEntries((parsed.activityDates ?? []).map((date) => [date, parsed.activityCountsByDate![date] ?? 1])),
+          ...parsed.activityCountsByDate,
+        });
+      } else if (parsed.activityDates) {
+        setActivityCountsByDate(Object.fromEntries(parsed.activityDates.map((date) => [date, 1])));
+      }
       activeTimeRef.current = {};
       setActiveTimeByDate({});
     } catch { localStorage.removeItem("ascend-state"); }
@@ -101,7 +108,7 @@ function App() {
     localStorage.setItem("ascend-state", JSON.stringify({ tasks, habits, streakCoins, streakFreezes, rewardedTaskIds, rewardedHabitIds, focusSessions, activityDates, activityCountsByDate, activeTimeByDate }));
     if (supabase && user?.email) {
       supabase.auth.getUser().then(({ data }) => {
-        if (data.user) saveUserData(data.user.id, tasks, habits, { focusSessions, activityDates, activeTimeByDate, streakCoins, streakFreezes }).catch(() => undefined);
+        if (data.user) saveUserData(data.user.id, tasks, habits, { focusSessions, activityDates, activityCountsByDate, activeTimeByDate, streakCoins, streakFreezes }).catch(() => undefined);
       });
     }
   }, [tasks, habits, streakCoins, streakFreezes, rewardedTaskIds, rewardedHabitIds, focusSessions, activityDates, activityCountsByDate, activeTimeByDate, user]);
@@ -140,6 +147,14 @@ function App() {
         if (saved?.habits) setHabits(saved.habits as Habit[]);
         if (saved?.focus_sessions) setFocusSessions(saved.focus_sessions as FocusSession[]);
         if (saved?.activity_dates) setActivityDates(saved.activity_dates as ActivityDate[]);
+        if (saved?.activity_counts_by_date) {
+          setActivityCountsByDate({
+            ...Object.fromEntries(((saved.activity_dates as string[] | undefined) ?? []).map((date) => [date, (saved.activity_counts_by_date as Record<string, number>)[date] ?? 1])),
+            ...(saved.activity_counts_by_date as Record<string, number>),
+          });
+        } else if (saved?.activity_dates) {
+          setActivityCountsByDate(Object.fromEntries((saved.activity_dates as string[]).map((date) => [date, 1])));
+        }
         activeTimeRef.current = {};
         setActiveTimeByDate({});
         if (typeof saved?.streak_coins === "number") setStreakCoins(saved.streak_coins);
@@ -162,6 +177,7 @@ function App() {
       const nextCount = Math.max(0, (current[todayKey] ?? 0) - amount);
       if (nextCount === 0) {
         const { [todayKey]: _removed, ...rest } = current;
+        setActivityDates((dates) => dates.filter((date) => date !== todayKey));
         return rest;
       }
       return { ...current, [todayKey]: nextCount };
