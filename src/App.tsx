@@ -1,7 +1,7 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight, BarChart3, BookOpen, BrainCircuit, CalendarDays, Check,
-  ChevronDown, CircleHelp, Clock3, Flame, LayoutDashboard, LogOut,
+  ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, Flame, LayoutDashboard, LogOut,
   Menu, MoreHorizontal, Pencil, Plus, Search, Settings, ShieldCheck, ShoppingBag, Sparkles,
   Target, Trophy, UserRound, X,
 } from "lucide-react";
@@ -157,6 +157,16 @@ function App() {
     setActivityDates((current) => current.includes(todayKey) ? current : [...current, todayKey]);
     setActivityCountsByDate((current) => ({ ...current, [todayKey]: (current[todayKey] ?? 0) + amount }));
   };
+  const unmarkActivity = (amount = 1) => {
+    setActivityCountsByDate((current) => {
+      const nextCount = Math.max(0, (current[todayKey] ?? 0) - amount);
+      if (nextCount === 0) {
+        const { [todayKey]: _removed, ...rest } = current;
+        return rest;
+      }
+      return { ...current, [todayKey]: nextCount };
+    });
+  };
   const saveProfile = async (nextProfile: Profile) => {
     if (supabase) await supabase.auth.updateUser({ data: nextProfile });
     setProfile(nextProfile);
@@ -173,6 +183,7 @@ function App() {
     const completing = !task.completed;
     setTasks((current) => current.map((item) => item.id === id ? { ...item, completed: completing } : item));
     if (completing) markActivity();
+    else unmarkActivity();
     if (completing && !rewardedTaskIds.includes(id)) {
       setRewardedTaskIds((current) => [...current, id]);
       setStreakCoins((current) => current + 10);
@@ -185,6 +196,7 @@ function App() {
     const completing = !habit.completed;
     setHabits((current) => current.map((item) => item.id === id ? { ...item, completed: completing, progress: completing ? Math.min(5, item.progress + 1) : Math.max(0, item.progress - 1) } : item));
     if (completing) markActivity();
+    else unmarkActivity();
     if (completing && !rewardedHabitIds.includes(id)) {
       setRewardedHabitIds((current) => [...current, id]);
       setStreakCoins((current) => current + 5);
@@ -530,19 +542,24 @@ function InsightsView({ tasks, habits, xp, activeTimeByDate, activityCountsByDat
 }
 function StreakHeatmap({ activityCountsByDate, metrics }: { activityCountsByDate: Record<string, number>; metrics: ReturnType<typeof getStreakMetrics> }) {
   const today = new Date();
-  const days = Array.from({ length: 84 }, (_, index) => {
-    const date = new Date(today);
-    date.setHours(12, 0, 0, 0);
-    date.setDate(today.getDate() - (83 - index));
-    return date;
-  });
+  const [displayMonth, setDisplayMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const year = displayMonth.getFullYear();
+  const month = displayMonth.getMonth();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const days = [
+    ...Array.from({ length: firstDay }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => new Date(year, month, index + 1)),
+  ];
   const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  return <section className="workspace-panel streak-heatmap-panel"><div className="streak-heatmap-heading"><div><p className="card-overline">CONSISTENCY</p><h2>Streak activity</h2></div><div className="streak-heatmap-stats"><span><strong>{metrics.current}</strong> day streak</span><span><strong>{metrics.longest}</strong> best streak</span></div></div><div className="heatmap-layout"><div className="heatmap-weekdays">{weekdayLabels.map((label) => <span key={label}>{label}</span>)}</div><div className="heatmap-grid">{days.map((date) => {
+  const monthLabel = displayMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  return <section className="workspace-panel streak-heatmap-panel"><div className="streak-heatmap-heading"><div><p className="card-overline">CONSISTENCY</p><h2>Streak activity</h2></div><div className="streak-heatmap-stats"><span><strong>{metrics.current}</strong> day streak</span><span><strong>{metrics.longest}</strong> best streak</span></div></div><div className="month-calendar-heading"><button type="button" onClick={() => setDisplayMonth(new Date(year, month - 1, 1))} aria-label="Previous month"><ChevronLeft size={15} /></button><strong>{monthLabel}</strong><button type="button" onClick={() => setDisplayMonth(new Date(year, month + 1, 1))} aria-label="Next month"><ChevronRight size={15} /></button></div><div className="month-heatmap"><div className="month-heatmap-weekdays">{weekdayLabels.map((label) => <span key={label}>{label}</span>)}</div><div className="month-heatmap-grid">{days.map((date, index) => {
+    if (!date) return <span key={`blank-${index}`} className="month-heatmap-day blank" />;
     const key = localDateKey(date);
     const count = activityCountsByDate[key] ?? 0;
     const level = count <= 0 ? 0 : count === 1 ? 1 : count <= 3 ? 2 : count <= 5 ? 3 : 4;
     const label = date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    return <span key={key} className={`heatmap-day level-${level}`} title={`${label}: ${count} work ${count === 1 ? "item" : "items"} completed`} aria-label={`${label}: ${count} work items completed`} />;
+    return <span key={key} className={`month-heatmap-day level-${level} ${key === localDateKey(today) ? "today" : ""}`} title={`${label}: ${count} work ${count === 1 ? "item" : "items"} completed`} aria-label={`${label}: ${count} work items completed`}><span>{date.getDate()}</span></span>;
   })}</div></div><div className="heatmap-legend"><span>Less</span>{[0, 1, 2, 3, 4].map((level) => <i key={level} className={`level-${level}`} />)}<span>More</span></div></section>;
 }
 
