@@ -214,6 +214,13 @@ function App() {
   };
   const saveProfile = async (nextProfile: Profile) => {
     if (supabase) await supabase.auth.updateUser({ data: nextProfile });
+    const previousKey = `${profile?.course || "General"}|${profile?.standard || "General level"}`;
+    const nextKey = `${nextProfile.course || "General"}|${nextProfile.standard || "General level"}`;
+    if (previousKey !== nextKey) {
+      localStorage.removeItem("ascend-subjects");
+      localStorage.removeItem("ascend-assignments");
+      localStorage.removeItem("ascend-academic-profile-key");
+    }
     setProfile(nextProfile);
     const nextUser = user ? { ...user, name: nextProfile.name, avatar: initials(nextProfile.name) } : user;
     if (nextUser) {
@@ -465,10 +472,14 @@ function AcademicView({ profile, onProgress }: { profile: Profile | null; onProg
   useEffect(() => { localStorage.setItem("ascend-subjects", JSON.stringify(subjects)); }, [subjects]);
   useEffect(() => { localStorage.setItem("ascend-assignments", JSON.stringify(assignments)); }, [assignments]);
   useEffect(() => {
-    if (!profile || (!profile.course && !profile.standard) || subjects.length) return;
+    if (!profile || (!profile.course && !profile.standard)) return;
     const profileKey = `${profile.course || "General"}|${profile.standard || "General level"}`;
     const generatedKey = localStorage.getItem("ascend-academic-profile-key");
     if (generatedKey === profileKey) return;
+    setSubjects([]);
+    setAssignments([]);
+    localStorage.removeItem("ascend-subjects");
+    localStorage.removeItem("ascend-assignments");
     let cancelled = false;
     const generateFromProfile = async () => {
       setAiLoading(true);
@@ -510,7 +521,7 @@ function AcademicView({ profile, onProgress }: { profile: Profile | null; onProg
     };
     void generateFromProfile();
     return () => { cancelled = true; };
-  }, [profile, subjects.length]);
+  }, [profile]);
   const addSubject = () => {
     if (!subjectName.trim()) return;
     const topics = subjectSyllabus.split(/\r?\n|,/).map((topic) => topic.trim()).filter(Boolean).map((title, index) => ({ id: Date.now() + index, title, covered: false }));
