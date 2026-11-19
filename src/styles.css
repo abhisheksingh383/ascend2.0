@@ -54,6 +54,7 @@
 .subject-card{border-top:1px solid #f0f1f4;padding:14px 0}
 .subject-card:first-of-type{border-top:0}
 .subject-card .subject-row{border-top:0;padding:0 0 8px}
+.subject-delete-button{width:28px;height:28px;border:1px solid #efdedf;border-radius:7px;background:#fff7f7;color:#c45b61;display:grid;place-items:center;flex-shrink:0}.subject-delete-button:hover{background:#fff0f0;border-color:#e7c4c6}
 .academic-progress{margin-bottom:10px}
 .academic-progress span{background:#7564e6}
 .topic-list{display:flex;flex-direction:column;gap:7px;margin:6px 0 10px 44px}

@@ -2,7 +2,7 @@ import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "reac
 import {
   ArrowUpRight, BarChart3, BookOpen, BrainCircuit, CalendarDays, Check,
   ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, Flame, LayoutDashboard, LogOut,
-  Menu, MoreHorizontal, Pencil, Plus, Search, Settings, ShieldCheck, ShoppingBag, Sparkles,
+  Menu, MoreHorizontal, Pencil, Plus, Search, Settings, ShieldCheck, ShoppingBag, Sparkles, Trash2,
   Target, Trophy, UserRound, X,
 } from "lucide-react";
 import { AiAction, authProviders, loadUserData, requestAiCoach, saveUserData, signInWithOAuth, supabase } from "./lib/supabase";
@@ -519,6 +519,15 @@ function AcademicView({ profile, onProgress }: { profile: Profile | null; onProg
     setSubjectCode("");
     setSubjectSyllabus("");
   };
+  const deleteSubject = (subjectId: number) => {
+    const subject = subjects.find((item) => item.id === subjectId);
+    if (!subject) return;
+    if (!window.confirm(`Delete ${subject.name}? Its syllabus topics and assignments will also be removed.`)) return;
+    setSubjects((current) => current.filter((item) => item.id !== subjectId));
+    setAssignments((current) => current.filter((assignment) => assignment.subject !== subject.name));
+    if (assignmentSubject === subject.name) setAssignmentSubject("");
+    setAiNotice(`${subject.name} and its related assignments were deleted.`);
+  };
   const toggleTopic = (subjectId: number, topicId: number) => {
     setSubjects((current) => current.map((subject) => subject.id === subjectId ? { ...subject, topics: subject.topics.map((topic) => {
       if (topic.id !== topicId) return topic;
@@ -569,7 +578,49 @@ function AcademicView({ profile, onProgress }: { profile: Profile | null; onProg
   const totalTopics = subjects.reduce((total, subject) => total + subject.topics.length, 0);
   const coveredTopics = subjects.reduce((total, subject) => total + subject.topics.filter((topic) => topic.covered).length, 0);
   const overallProgress = totalTopics ? Math.round(coveredTopics / totalTopics * 100) : 0;
-  return <div className="academic-grid"><div className="workspace-panel"><div className="academic-heading"><div><SectionHeading title="Your subjects" subtitle={`${subjects.length} subject${subjects.length === 1 ? "" : "s"} · ${overallProgress}% syllabus covered`} /></div><button className="secondary-button" onClick={generateSyllabus} disabled={aiLoading}><BrainCircuit size={15} /> {aiLoading ? "Generating..." : "Generate with AI Coach"}</button></div><div className="academic-form academic-subject-form"><input value={subjectName} onChange={(event) => setSubjectName(event.target.value)} placeholder="Subject name" /><input value={subjectCode} onChange={(event) => setSubjectCode(event.target.value)} placeholder="Code (optional)" /><textarea value={subjectSyllabus} onChange={(event) => setSubjectSyllabus(event.target.value)} placeholder="Syllabus topics, one per line or comma-separated" rows={3} /><button className="primary-button" onClick={addSubject}><Plus size={15} /> Add subject</button></div>{subjects.length ? subjects.map((subject) => { const covered = subject.topics.filter((topic) => topic.covered).length; const progress = subject.topics.length ? Math.round(covered / subject.topics.length * 100) : 0; return <div className="subject-card" key={subject.id}><div className="subject-row"><span className="subject-icon purple">{subject.code}</span><div><strong>{subject.name}</strong><small>{covered}/{subject.topics.length} topics covered</small></div><b>{progress}%</b></div><div className="progress-line academic-progress"><span style={{ width: `${progress}%` }} /></div>{subject.topics.length ? <div className="topic-list">{subject.topics.map((topic) => <label className="topic-item" key={topic.id}><input type="checkbox" checked={topic.covered} onChange={() => toggleTopic(subject.id, topic.id)} /><span className={topic.covered ? "covered" : ""}>{topic.title}</span></label>)}</div> : <p className="academic-muted">No syllabus topics yet. Add one below to begin at 0%.</p>}<TopicInput onAdd={(title) => addTopic(subject.id, title)} /></div>; }) : <div className="empty-state">No subjects yet. Add your first subject and syllabus above.</div>}</div><div className="workspace-panel deadline-panel"><div className="academic-heading"><div><p className="card-overline">UP NEXT</p><h2>Assignment deadlines</h2></div><button className="secondary-button" onClick={draftWithCoach}><BrainCircuit size={15} /> Draft with AI Coach</button></div><div className="academic-form"><input value={assignmentTitle} onChange={(event) => setAssignmentTitle(event.target.value)} placeholder="Assignment or study goal" /><select value={assignmentSubject} onChange={(event) => setAssignmentSubject(event.target.value)} aria-label="Assignment subject"><option value="">Choose subject</option>{subjects.map((subject) => <option key={subject.id} value={subject.name}>{subject.name}</option>)}</select><input value={assignmentDue} onChange={(event) => setAssignmentDue(event.target.value)} placeholder="Due date or timeframe" /><select value={assignmentPriority} onChange={(event) => setAssignmentPriority(event.target.value as AcademicAssignment["priority"])} aria-label="Assignment priority"><option>High</option><option>Medium</option><option>Low</option></select><button className="primary-button" onClick={addAssignment}><Plus size={15} /> Add</button></div>{aiNotice && <p className="academic-notice">{aiNotice}</p>}{assignments.length ? assignments.map((assignment) => <div className="deadline" key={assignment.id}><CalendarDays size={17} /><div><strong>{assignment.title}</strong><span>{assignment.subject} · {assignment.due}</span></div><b>{assignment.priority}</b></div>) : <div className="empty-state">Add an assignment or let AI Coach draft review blocks from your subjects.</div>}</div></div>;
+  return (
+    <div className="academic-grid">
+      <div className="workspace-panel">
+        <div className="academic-heading">
+          <div><SectionHeading title="Your subjects" subtitle={`${subjects.length} subject${subjects.length === 1 ? "" : "s"} · ${overallProgress}% syllabus covered`} /></div>
+          <button className="secondary-button" onClick={generateSyllabus} disabled={aiLoading}><BrainCircuit size={15} /> {aiLoading ? "Generating..." : "Generate with AI Coach"}</button>
+        </div>
+        <div className="academic-form academic-subject-form">
+          <input value={subjectName} onChange={(event) => setSubjectName(event.target.value)} placeholder="Subject name" />
+          <input value={subjectCode} onChange={(event) => setSubjectCode(event.target.value)} placeholder="Code (optional)" />
+          <textarea value={subjectSyllabus} onChange={(event) => setSubjectSyllabus(event.target.value)} placeholder="Syllabus topics, one per line or comma-separated" rows={3} />
+          <button className="primary-button" onClick={addSubject}><Plus size={15} /> Add subject</button>
+        </div>
+        {subjects.length ? subjects.map((subject) => {
+          const covered = subject.topics.filter((topic) => topic.covered).length;
+          const progress = subject.topics.length ? Math.round(covered / subject.topics.length * 100) : 0;
+          return <div className="subject-card" key={subject.id}>
+            <div className="subject-row">
+              <span className="subject-icon purple">{subject.code}</span>
+              <div><strong>{subject.name}</strong><small>{covered}/{subject.topics.length} topics covered</small></div>
+              <b>{progress}%</b>
+              <button type="button" className="subject-delete-button" onClick={() => deleteSubject(subject.id)} aria-label={`Delete ${subject.name}`} title={`Delete ${subject.name}`}><Trash2 size={15} /></button>
+            </div>
+            <div className="progress-line academic-progress"><span style={{ width: `${progress}%` }} /></div>
+            {subject.topics.length ? <div className="topic-list">{subject.topics.map((topic) => <label className="topic-item" key={topic.id}><input type="checkbox" checked={topic.covered} onChange={() => toggleTopic(subject.id, topic.id)} /><span className={topic.covered ? "covered" : ""}>{topic.title}</span></label>)}</div> : <p className="academic-muted">No syllabus topics yet. Add one below to begin at 0%.</p>}
+            <TopicInput onAdd={(title) => addTopic(subject.id, title)} />
+          </div>;
+        }) : <div className="empty-state">No subjects yet. Add your first subject and syllabus above.</div>}
+      </div>
+      <div className="workspace-panel deadline-panel">
+        <div className="academic-heading"><div><p className="card-overline">UP NEXT</p><h2>Assignment deadlines</h2></div><button className="secondary-button" onClick={draftWithCoach}><BrainCircuit size={15} /> Draft with AI Coach</button></div>
+        <div className="academic-form">
+          <input value={assignmentTitle} onChange={(event) => setAssignmentTitle(event.target.value)} placeholder="Assignment or study goal" />
+          <select value={assignmentSubject} onChange={(event) => setAssignmentSubject(event.target.value)} aria-label="Assignment subject"><option value="">Choose subject</option>{subjects.map((subject) => <option key={subject.id} value={subject.name}>{subject.name}</option>)}</select>
+          <input value={assignmentDue} onChange={(event) => setAssignmentDue(event.target.value)} placeholder="Due date or timeframe" />
+          <select value={assignmentPriority} onChange={(event) => setAssignmentPriority(event.target.value as AcademicAssignment["priority"])} aria-label="Assignment priority"><option>High</option><option>Medium</option><option>Low</option></select>
+          <button className="primary-button" onClick={addAssignment}><Plus size={15} /> Add</button>
+        </div>
+        {aiNotice && <p className="academic-notice">{aiNotice}</p>}
+        {assignments.length ? assignments.map((assignment) => <div className="deadline" key={assignment.id}><CalendarDays size={17} /><div><strong>{assignment.title}</strong><span>{assignment.subject} · {assignment.due}</span></div><b>{assignment.priority}</b></div>) : <div className="empty-state">Add an assignment or let AI Coach draft review blocks from your subjects.</div>}
+      </div>
+    </div>
+  );
 }
 function TopicInput({ onAdd }: { onAdd: (title: string) => void }) {
   const [title, setTitle] = useState("");
